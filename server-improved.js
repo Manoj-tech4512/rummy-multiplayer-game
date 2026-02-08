@@ -6,6 +6,15 @@ const path = require("path");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+// ================= ROOM & TIMER STORAGE =================
+const rooms = {};
+const turnTimers = {};
+// ========================================================
+
+// Generate 6-letter room code
+function generateRoomCode() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
 
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
