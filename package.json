@@ -1,16 +1,22 @@
 {
-  "name": "rummy-multiplayer-game",
-  "version": "2.0.0",
-  "description": "Real-time multiplayer Rummy card game with drag-drop and improved UI",
-  "main": "server-improved.js",
+  "name": "rummy-game-improved",
+  "version": "3.0.0",
+  "description": "Mobile-responsive multiplayer Rummy with 25/50 drop points",
+  "main": "server-mobile.js",
   "scripts": {
-    "start": "node server-improved.js"
+    "start": "node server-mobile.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.6.1"
   },
-  "keywords": ["multiplayer", "card-game", "rummy", "realtime", "drag-drop"],
-  "author": "",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [
+    "rummy",
+    "multiplayer",
+    "card-game"
+  ],
   "license": "MIT"
 }
