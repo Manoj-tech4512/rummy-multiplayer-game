@@ -14,20 +14,6 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
-
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, "public","index.html'));
-});
-
-const rooms = {};
-const turnTimers = {}; // Track turn timers
-const timeoutCount = {}; // Track consecutive timeouts per player
-
-function generateRoomCode() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
 function generateDeck() {
     const suits = ['♠', '♥', '♦', '♣'];
     const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
