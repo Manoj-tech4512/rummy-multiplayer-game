@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rummy - Improved Multiplayer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Home Screen Styles */
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 90%;
+            padding: 40px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        input {
+            padding: 15px;
+            font-size: 18px;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            width: 100%;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .room-code-display {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            text-align: center;
+        }
+
+        /* Game Table Layout */
+        .game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            display: none;
+        }
+
+        .game-container.active {
+            display: block;
+        }
+
+        /* Top Info Bar */
+        .info-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 14px;
+            z-index: 100;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4caf50;
+        }
+
+        /* Game Table - Centered Oval */
+        .game-table {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px;
+            height: 500px;
+            background: radial-gradient(ellipse at center, #2d5016 0%, #1a3d0a 100%);
+            border-radius: 50%;
+            border: 15px solid #8b6914;
+            box-shadow: 
+                inset 0 0 50px rgba(0,0,0,0.5),
+                0 0 30px rgba(0,0,0,0.3);
+        }
+
+        /* Center Drop Zone */
+        .center-zone {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            gap: 20px;
+            z-index: 10;
+        }
+
+        .pile {
+            width: 90px;
+            height: 130px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .draw-pile {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            border: 3px solid #3b82f6;
+        }
+
+        .discard-pile {
+            background: white;
+            border: 3px dashed #999;
+            min-height: 130px;
+        }
+
+        .discard-pile.drag-over {
+            border-color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .pile:hover {
+            transform: scale(1.05);
+        }
+
+        /* Player Positions Around Table */
+        .player-seat {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Bottom - Current Player */
+        .player-seat.bottom {
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Top */
+        .player-seat.top {
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Left */
+        .player-seat.left {
+            top: 50%;
+            left: 80px;
+            transform: translateY(-50%);
+        }
+
+        /* Right */
+        .player-seat.right {
+            top: 50%;
+            right: 80px;
+            transform: translateY(-50%);
+        }
+
+        /* Player Avatar */
+        .player-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            border: 4px solid #fff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        .player-avatar.active-turn {
+            border-color: #ffd700;
+            box-shadow: 0 0 20px #ffd700;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px #ffd700; }
+            50% { box-shadow: 0 0 30px #ffd700; }
+        }
+
+        .player-name {
+            color: white;
+            font-weight: bold;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+
+        .card-count {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #f44336;
+            color: white;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* Player Hand Area */
+        .hand-area {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 220px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .hand-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .hand-controls button {
+            padding: 10px 25px;
+            font-size: 14px;
+            width: auto;
+            margin: 0;
+        }
+
+        .btn-sort {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        }
+
+        .btn-drop {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+        }
+
+        .btn-declare {
+            background: linear-gradient(135deg, #ffd700 0%, #ffa000 100%);
+        }
+
+        /* Card Container with Drag and Drop */
+        .cards-container {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            min-height: 140px;
+            padding: 10px;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        /* Card Spacer for Grouping */
+        .card-spacer {
+            width: 30px;
+            height: 100px;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .card-spacer::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+        }
+
+        /* Playing Card */
+        .card {
+            width: 70px;
+            height: 100px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            transition: all 0.2s;
+            position: relative;
+            user-select: none;
+        }
+
+        .card:active {
+            cursor: grabbing;
+        }
+
+        .card.dragging {
+            opacity: 0.5;
+            transform: rotate(5deg);
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+        }
+
+        .card.selected {
+            transform: translateY(-20px);
+            border: 3px solid #ffd700;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+        }
+
+        .card-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .card-suit {
+            font-size: 20px;
+        }
+
+        .card.red {
+            color: #e74c3c;
+        }
+
+        .card.black {
+            color: #2c3e50;
+        }
+
+        .card.joker {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 16px;
+        }
+
+        /* Turn Indicator */
+        .turn-indicator {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 50;
+            display: none;
+        }
+
+        .turn-indicator.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+
+        .turn-indicator.your-turn {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .game-table {
+                width: 600px;
+                height: 400px;
+            }
+            
+            .card {
+                width: 60px;
+                height: 85px;
+            }
+            
+            .player-avatar {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
+        }
+
+        /* Lobby Screen */
+        .lobby-screen {
+            text-align: center;
+        }
+
+        .players-list {
+            margin: 30px 0;
+            min-height: 150px;
+        }
+
+        .player-item {
+            background: #f0f0f0;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .player-item .avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+        }
+
+        .player-item .name {
+            flex: 1;
+            text-align: left;
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .host-badge {
+            background: #ffd700;
+            color: #000;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <!-- Home Screen -->
+    <div class="container screen active" id="homeScreen">
+        <h1>🎴 Rummy</h1>
+        <input type="text" id="playerName" placeholder="Enter your name" maxlength="20">
+        <button onclick="createRoom()">Create Room</button>
+        <button onclick="showJoinRoom()">Join Room</button>
+    </div>
+
+    <!-- Join Room Screen -->
+    <div class="container screen" id="joinScreen">
+        <h1>🎴 Join Room</h1>
+        <input type="text" id="joinRoomCode" placeholder="Enter room code" maxlength="6" style="text-transform: uppercase;">
+        <button onclick="joinRoom()">Join Game</button>
+        <button onclick="backToHome()">Back</button>
+    </div>
+
+    <!-- Lobby Screen -->
+    <div class="container screen" id="lobbyScreen">
+        <h1>🎴 Game Lobby</h1>
+        <div class="room-code-display">
+            Room: <span id="lobbyRoomCode"></span>
+        </div>
+        <div class="players-list" id="playersList"></div>
+        <button id="startGameBtn" onclick="startGame()" style="display: none;">Start Game</button>
+        <button onclick="leaveRoom()">Leave Room</button>
+    </div>
+
+    <!-- Game Screen -->
+    <div class="game-container" id="gameScreen">
+        <!-- Info Bar -->
+        <div class="info-bar">
+            <div class="connection-status">
+                <div class="status-dot"></div>
+                <span>Connected</span>
+            </div>
+            <div>Room: <span id="gameRoomCode"></span> | Players: <span id="playerCount"></span> | Cards Left: <span id="deckCount">77</span></div>
+            <div id="currentTurnInfo"></div>
+        </div>
+
+        <!-- Turn Indicator -->
+        <div class="turn-indicator" id="turnIndicator">
+            Waiting for turn...
+        </div>
+
+        <!-- Game Table -->
+        <div class="game-table">
+            <!-- Center Zone with Piles -->
+            <div class="center-zone">
+                <div class="pile draw-pile" onclick="drawCard('deck')">
+                    <div style="text-align: center;">
+                        <div style="font-size: 40px;">🂠</div>
+                        <div>Draw Pile</div>
+                    </div>
+                </div>
+                <div class="pile" id="cutJokerPile" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); border: 3px solid #ff8787;">
+                    <div id="cutJokerCard" style="text-align: center; color: white;">
+                        <div style="font-size: 14px; margin-bottom: 5px;">CUT JOKER</div>
+                        <div style="font-size: 32px;">🃏</div>
+                    </div>
+                </div>
+                <div class="pile discard-pile" id="discardPile" ondrop="dropOnDiscard(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+                    <div id="topDiscardCard"></div>
+                </div>
+            </div>
+
+            <!-- Player Seats (will be populated dynamically) -->
+            <div id="playerSeats"></div>
+        </div>
+
+        <!-- Player Hand Area -->
+        <div class="hand-area">
+            <div class="hand-controls">
+                <button class="btn-sort" onclick="sortHand()">Sort Cards</button>
+                <button class="btn-sort" onclick="addSpace()" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">Add Space</button>
+                <button class="btn-drop" onclick="dropCard()" id="dropBtn" disabled>Drop Card</button>
+                <button class="btn-declare" onclick="declareWin()">Declare Win</button>
+            </div>
+            <div class="cards-container" id="playerHand"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let playerName = '';
+        let roomCode = '';
+        let playerId = '';
+        let isMyTurn = false;
+        let hand = [];
+        let handOrder = []; // Track card arrangement including spacers
+        let selectedCard = null;
+        let draggedCard = null;
+        let hasDrawn = false;
+        let cutJoker = null;
+
+        // Screen Navigation
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen, .game-container').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function backToHome() {
+            showScreen('homeScreen');
+        }
+
+        function showJoinRoom() {
+            showScreen('joinScreen');
+        }
+
+        // Room Functions
+        function createRoom() {
+            playerName = document.getElementById('playerName').value.trim();
+            if (!playerName) {
+                alert('Please enter your name');
+                return;
+            }
+            socket.emit('createRoom', { playerName });
+        }
+
+        function joinRoom() {
+            playerName = document.getElementById('playerName').value.trim();
+            roomCode = document.getElementById('joinRoomCode').value.trim().toUpperCase();
+            if (!playerName || !roomCode) {
+                alert('Please enter your name and room code');
+                return;
+            }
+            socket.emit('joinRoom', { roomCode, playerName });
+        }
+
+        function leaveRoom() {
+            socket.emit('leaveRoom', { roomCode });
+            backToHome();
+        }
+
+        function startGame() {
+            socket.emit('startGame', { roomCode });
+        }
+
+        // Card Functions
+        function drawCard(source) {
+            if (!isMyTurn || hasDrawn) return;
+            
+            if (source === 'deck') {
+                socket.emit('drawCard', { roomCode, source: 'deck' });
+            } else if (source === 'discard') {
+                socket.emit('drawCard', { roomCode, source: 'discard' });
+            }
+            hasDrawn = true;
+        }
+
+        function selectCard(index) {
+            if (!hasDrawn && isMyTurn) {
+                alert('You must draw a card first!');
+                return;
+            }
+
+            // Toggle selection
+            if (selectedCard === index) {
+                selectedCard = null;
+            } else {
+                selectedCard = index;
+            }
+            renderHand();
+            document.getElementById('dropBtn').disabled = selectedCard === null;
+        }
+
+        function dropCard() {
+            if (selectedCard === null || !isMyTurn || !hasDrawn) return;
+
+            socket.emit('discardCard', { 
+                roomCode, 
+                cardIndex: selectedCard 
+            });
+
+            selectedCard = null;
+            hasDrawn = false;
+            document.getElementById('dropBtn').disabled = true;
+        }
+
+        function sortHand() {
+            const suitOrder = { '♠': 0, '♥': 1, '♦': 2, '♣': 3 };
+            const valueOrder = { 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13 };
+            
+            hand.sort((a, b) => {
+                if (a.suit === b.suit) {
+                    return valueOrder[a.value] - valueOrder[b.value];
+                }
+                return suitOrder[a.suit] - suitOrder[b.suit];
+            });
+            
+            // Rebuild handOrder with just cards (remove old spacers)
+            handOrder = hand.map((card, index) => ({ type: 'card', index }));
+            renderHand();
+        }
+
+        function addSpace() {
+            if (selectedCard === null) {
+                alert('Select a card first, then click "Add Space" to add a gap after it');
+                return;
+            }
+            
+            // Find the selected card in handOrder
+            let orderIndex = -1;
+            for (let i = 0; i < handOrder.length; i++) {
+                if (handOrder[i].type === 'card' && handOrder[i].index === selectedCard) {
+                    orderIndex = i;
+                    break;
+                }
+            }
+            
+            if (orderIndex !== -1) {
+                // Add spacer after the selected card
+                handOrder.splice(orderIndex + 1, 0, { type: 'spacer' });
+                selectedCard = null;
+                renderHand();
+            }
+        }
+
+        function declareWin() {
+            if (hand.length === 0) {
+                socket.emit('declareWin', { roomCode });
+            } else {
+                alert('You must have 0 cards to declare win!');
+            }
+        }
+
+        // Drag and Drop
+        function dragStart(event, index) {
+            draggedCard = index;
+            event.target.classList.add('dragging');
+            event.dataTransfer.effectAllowed = 'move';
+        }
+
+        function dragEnd(event) {
+            event.target.classList.remove('dragging');
+            draggedCard = null;
+        }
+
+        function dragOver(event, index) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+        }
+
+        function drop(event, dropIndex) {
+            event.preventDefault();
+            if (draggedCard !== null && draggedCard !== dropIndex) {
+                // Find positions in handOrder
+                let dragPos = -1, dropPos = -1;
+                for (let i = 0; i < handOrder.length; i++) {
+                    if (handOrder[i].type === 'card' && handOrder[i].index === draggedCard) dragPos = i;
+                    if (handOrder[i].type === 'card' && handOrder[i].index === dropIndex) dropPos = i;
+                }
+                
+                if (dragPos !== -1 && dropPos !== -1) {
+                    // Swap positions in handOrder
+                    const temp = handOrder[dragPos];
+                    handOrder.splice(dragPos, 1);
+                    if (dragPos < dropPos) dropPos--;
+                    handOrder.splice(dropPos, 0, temp);
+                    renderHand();
+                }
+            }
+        }
+
+        function allowDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('drag-over');
+        }
+
+        function dragLeave(event) {
+            event.currentTarget.classList.remove('drag-over');
+        }
+
+        function dropOnDiscard(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-over');
+            
+            if (!isMyTurn || !hasDrawn || draggedCard === null) return;
+
+            // Remove from handOrder
+            handOrder = handOrder.filter(item => !(item.type === 'card' && item.index === draggedCard));
+            
+            // Adjust indices in handOrder
+            handOrder = handOrder.map(item => {
+                if (item.type === 'card' && item.index > draggedCard) {
+                    return { ...item, index: item.index - 1 };
+                }
+                return item;
+            });
+
+            socket.emit('discardCard', { 
+                roomCode, 
+                cardIndex: draggedCard 
+            });
+
+            selectedCard = null;
+            hasDrawn = false;
+            draggedCard = null;
+            document.getElementById('dropBtn').disabled = true;
+        }
+
+        // Rendering
+        function renderHand() {
+            const container = document.getElementById('playerHand');
+            container.innerHTML = '';
+            
+            // If handOrder is empty or doesn't match hand length, rebuild it
+            const cardCount = handOrder.filter(item => item.type === 'card').length;
+            if (cardCount !== hand.length) {
+                handOrder = hand.map((card, index) => ({ type: 'card', index }));
+            }
+            
+            handOrder.forEach((item) => {
+                if (item.type === 'spacer') {
+                    // Add visual spacer
+                    const spacer = document.createElement('div');
+                    spacer.className = 'card-spacer';
+                    container.appendChild(spacer);
+                } else {
+                    // Render card
+                    const cardIndex = item.index;
+                    const card = hand[cardIndex];
+                    if (!card) return; // Skip if card doesn't exist
+                    
+                    const cardEl = document.createElement('div');
+                    cardEl.className = `card ${card.suit === '♥' || card.suit === '♦' ? 'red' : 'black'}`;
+                    if (card.value === 'JOKER') cardEl.classList.add('joker');
+                    if (cardIndex === selectedCard) cardEl.classList.add('selected');
+                    
+                    cardEl.draggable = true;
+                    cardEl.ondragstart = (e) => dragStart(e, cardIndex);
+                    cardEl.ondragend = dragEnd;
+                    cardEl.ondragover = (e) => dragOver(e, cardIndex);
+                    cardEl.ondrop = (e) => drop(e, cardIndex);
+                    cardEl.onclick = () => selectCard(cardIndex);
+                    
+                    if (card.value === 'JOKER') {
+                        cardEl.innerHTML = `<div>🃏<br>JOKER</div>`;
+                    } else {
+                        cardEl.innerHTML = `
+                            <div class="card-value">${card.value}</div>
+                            <div class="card-suit">${card.suit}</div>
+                        `;
+                    }
+                    
+                    container.appendChild(cardEl);
+                }
+            });
+        }
+
+        function renderDiscardPile(discardPile) {
+            const container = document.getElementById('topDiscardCard');
+            if (discardPile.length === 0) {
+                container.innerHTML = '<div style="color: #999;">Empty</div>';
+                return;
+            }
+            
+            const card = discardPile[discardPile.length - 1];
+            const cardEl = document.createElement('div');
+            cardEl.className = `card ${card.suit === '♥' || card.suit === '♦' ? 'red' : 'black'}`;
+            cardEl.style.margin = '0';
+            cardEl.style.cursor = 'pointer';
+            cardEl.onclick = () => drawCard('discard');
+            
+            if (card.value === 'JOKER') {
+                cardEl.classList.add('joker');
+                cardEl.innerHTML = `<div>🃏<br>JOKER</div>`;
+            } else {
+                cardEl.innerHTML = `
+                    <div class="card-value">${card.value}</div>
+                    <div class="card-suit">${card.suit}</div>
+                `;
+            }
+            
+            container.innerHTML = '';
+            container.appendChild(cardEl);
+        }
+
+        function renderCutJoker(jokerCard) {
+            if (!jokerCard) return;
+            
+            cutJoker = jokerCard;
+            const container = document.getElementById('cutJokerCard');
+            
+            const cardEl = document.createElement('div');
+            cardEl.className = `card ${jokerCard.suit === '♥' || jokerCard.suit === '♦' ? 'red' : 'black'}`;
+            cardEl.style.margin = '0';
+            cardEl.style.transform = 'scale(0.8)';
+            
+            if (jokerCard.value === 'JOKER') {
+                cardEl.classList.add('joker');
+                cardEl.innerHTML = `<div>🃏<br>JOKER</div>`;
+            } else {
+                cardEl.innerHTML = `
+                    <div class="card-value">${jokerCard.value}</div>
+                    <div class="card-suit">${jokerCard.suit}</div>
+                `;
+            }
+            
+            container.innerHTML = '<div style="font-size: 12px; margin-bottom: 5px; color: white;">CUT JOKER</div>';
+            container.appendChild(cardEl);
+        }
+
+        function renderPlayerSeats(players, currentTurn) {
+            const container = document.getElementById('playerSeats');
+            container.innerHTML = '';
+            
+            const positions = ['bottom', 'top', 'left', 'right'];
+            const otherPlayers = players.filter(p => p.id !== socket.id);
+            
+            otherPlayers.forEach((player, index) => {
+                const seat = document.createElement('div');
+                seat.className = `player-seat ${positions[index + 1]}`;
+                
+                const avatar = document.createElement('div');
+                avatar.className = `player-avatar ${player.id === currentTurn ? 'active-turn' : ''}`;
+                avatar.textContent = player.name.charAt(0).toUpperCase();
+                
+                const cardCount = document.createElement('div');
+                cardCount.className = 'card-count';
+                cardCount.textContent = player.cardCount || 13;
+                avatar.appendChild(cardCount);
+                
+                const nameTag = document.createElement('div');
+                nameTag.className = 'player-name';
+                nameTag.textContent = player.name;
+                
+                seat.appendChild(avatar);
+                seat.appendChild(nameTag);
+                container.appendChild(seat);
+            });
+        }
+
+        function updateTurnIndicator(currentPlayerId, players) {
+            const indicator = document.getElementById('turnIndicator');
+            const currentPlayer = players.find(p => p.id === currentPlayerId);
+            
+            if (currentPlayerId === socket.id) {
+                indicator.textContent = '🎯 YOUR TURN';
+                indicator.className = 'turn-indicator active your-turn';
+                isMyTurn = true;
+            } else {
+                indicator.textContent = `⏳ ${currentPlayer?.name || 'Player'}'s Turn`;
+                indicator.className = 'turn-indicator active';
+                isMyTurn = false;
+                hasDrawn = false;
+                selectedCard = null;
+                document.getElementById('dropBtn').disabled = true;
+            }
+        }
+
+        function renderLobby(room) {
+            const list = document.getElementById('playersList');
+            list.innerHTML = '';
+            
+            room.players.forEach(player => {
+                const item = document.createElement('div');
+                item.className = 'player-item';
+                
+                item.innerHTML = `
+                    <div class="avatar">${player.name.charAt(0).toUpperCase()}</div>
+                    <div class="name">${player.name}</div>
+                    ${player.id === room.host ? '<span class="host-badge">HOST</span>' : ''}
+                `;
+                
+                list.appendChild(item);
+            });
+
+            document.getElementById('lobbyRoomCode').textContent = room.code;
+            
+            if (socket.id === room.host) {
+                const startBtn = document.getElementById('startGameBtn');
+                startBtn.style.display = 'block';
+                startBtn.disabled = room.players.length < 2;
+            }
+        }
+
+        // Socket Events
+        socket.on('roomCreated', (data) => {
+            roomCode = data.roomCode;
+            playerId = socket.id;
+            showScreen('lobbyScreen');
+            renderLobby(data.room);
+        });
+
+        socket.on('roomJoined', (data) => {
+            roomCode = data.roomCode;
+            playerId = socket.id;
+            showScreen('lobbyScreen');
+            renderLobby(data.room);
+        });
+
+        socket.on('roomUpdate', (room) => {
+            if (document.getElementById('lobbyScreen').classList.contains('active')) {
+                renderLobby(room);
+            }
+        });
+
+        socket.on('gameStarted', (data) => {
+            hand = data.hand;
+            handOrder = hand.map((card, index) => ({ type: 'card', index }));
+            showScreen('gameScreen');
+            document.getElementById('gameRoomCode').textContent = roomCode;
+            renderHand();
+            renderDiscardPile(data.discardPile);
+            if (data.cutJoker) renderCutJoker(data.cutJoker);
+            renderPlayerSeats(data.players, data.currentTurn);
+            updateTurnIndicator(data.currentTurn, data.players);
+            document.getElementById('deckCount').textContent = data.deckCount;
+            document.getElementById('playerCount').textContent = data.players.length;
+        });
+
+        socket.on('gameState', (data) => {
+            const oldHandLength = hand.length;
+            const newHand = data.hand;
+            
+            // If we drew a card (hand got bigger), add it to the end
+            if (newHand.length > oldHandLength) {
+                const newCardIndex = newHand.length - 1;
+                handOrder.push({ type: 'card', index: newCardIndex });
+            }
+            // If we discarded (hand got smaller), handOrder is already updated in dropOnDiscard
+            
+            hand = newHand;
+            renderHand();
+            renderDiscardPile(data.discardPile);
+            renderPlayerSeats(data.players, data.currentTurn);
+            updateTurnIndicator(data.currentTurn, data.players);
+            document.getElementById('deckCount').textContent = data.deckCount;
+        });
+
+        socket.on('gameWon', (data) => {
+            alert(`🎉 ${data.winner} won the game!`);
+            setTimeout(() => {
+                backToHome();
+            }, 2000);
+        });
+
+        socket.on('error', (message) => {
+            alert(message);
+        });
+    </script>
+</body>
+</html>
