@@ -9,7 +9,7 @@ const server = http.createServer(app);
 const io = socketIO(server);
 
 // Serve static files
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname,"public")));
 
 // Serve the improved HTML file as index
 app.get('/', (req, res) => {
