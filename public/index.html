@@ -163,10 +163,16 @@ socket.on('roomUpdate', room => {
   updatePlayers(room);
 });
 
-socket.on('gameStarted', state => {
-  gameState = state;
-  showScreen('gameScreen');
+let gameState = null;
+
+socket.on("gameStarted", (state) => {
+  console.log("🎴 gameStarted", state);
+
+  gameState = state;          // 🔥 STORE GAME STATE
+  showGameScreen();
+  renderGame();               // 🔥 RENDER UI
 });
+
 
 /* PLAYERS LIST */
 function updatePlayers(room) {
