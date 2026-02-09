@@ -1,28 +1,26 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const path = require("path");
+const express = require('express');
+const http = require('http');
+const socketIO = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
-// ================= ROOM & TIMER STORAGE =================
-const rooms = {};
-const turnTimers = {};
-// ========================================================
+const io = socketIO(server);
 
-// Generate 6-letter room code
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'rummy-mobile.html'));
+});
+
+const rooms = {};
+const turnTimers = {}; // Track turn timers
+const timeoutCount = {}; // Track consecutive timeouts per player
+
 function generateRoomCode() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-// Serve static files
-app.use(express.static(path.join(__dirname, "public")));
-
-// Home route
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
 function generateDeck() {
     const suits = ['♠', '♥', '♦', '♣'];
     const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -295,12 +293,36 @@ function handleTurnTimeout(roomCode, playerId) {
             reason: 'timeout'
         });
 
-        // Check if only one player remains
-        const activePlayers = game.players.filter(p => !p.dropped && !p.eliminated);
-        if (activePlayers.length === 1) {
+        // Check if player should be eliminated (250+ points)
+        if (player.totalScore >= 250) {
+            player.eliminated = true;
+            io.to(roomCode).emit('playerEliminated', {
+                playerName: player.name,
+                reason: 'Reached 250 points'
+            });
+        }
+
+        // Check if only one player remains active in this round
+        const activeInRound = game.players.filter(p => !p.dropped && !p.eliminated);
+        if (activeInRound.length === 1) {
+            const winner = activeInRound[0];
+            io.to(roomCode).emit('roundWon', { 
+                winner: winner.name,
+                reason: 'All others dropped/eliminated in this round'
+            });
+            
+            setTimeout(() => {
+                startNewRound(roomCode);
+            }, 3000);
+            return;
+        }
+
+        // Check if game is over (only 1 player under 250)
+        const playersUnder250 = game.players.filter(p => p.totalScore < 250 && !p.eliminated);
+        if (playersUnder250.length <= 1) {
             io.to(roomCode).emit('gameWon', { 
-                winner: activePlayers[0].name,
-                reason: 'All others dropped/eliminated'
+                winner: playersUnder250[0]?.name || 'No one',
+                reason: 'Last player under 250 points!'
             });
             
             setTimeout(() => {
@@ -315,15 +337,16 @@ function handleTurnTimeout(roomCode, playerId) {
         // Move to next player
         moveToNextPlayer(room);
     } else {
-        // Auto-draw from pile and auto-discard first card
+        // Auto-draw from pile and auto-discard
         if (game.deck.length > 0) {
             const drawnCard = game.deck.pop();
             player.hand.push(drawnCard);
             game.deckCount = game.deck.length;
         }
 
+        // Auto-discard: Remove the LAST card (the one just drawn, 14th card)
         if (player.hand.length > 0) {
-            const discardedCard = player.hand.shift();
+            const discardedCard = player.hand.pop(); // Changed from shift() to pop()
             game.discardPile.push(discardedCard);
         }
 
@@ -361,6 +384,88 @@ function moveToNextPlayer(room) {
     
     // Start timer for next player
     startTurnTimer(room.code, game.currentTurn);
+}
+
+function startNewRound(roomCode) {
+    const room = rooms[roomCode];
+    if (!room || !room.gameState) return;
+
+    const game = room.gameState;
+
+    // Check how many players are still in the game (under 250 points and not eliminated)
+    const activePlayers = game.players.filter(p => !p.eliminated && p.totalScore < 250);
+
+    if (activePlayers.length <= 1) {
+        // Game over - only one player left
+        io.to(roomCode).emit('gameWon', {
+            winner: activePlayers[0]?.name || 'No one',
+            reason: 'Last player standing! Game over!'
+        });
+        
+        setTimeout(() => {
+            if (rooms[roomCode]) {
+                rooms[roomCode].started = false;
+                rooms[roomCode].gameState = null;
+                if (turnTimers[roomCode]) {
+                    clearTimeout(turnTimers[roomCode]);
+                }
+            }
+        }, 3000);
+        return;
+    }
+
+    // Reset for new round
+    const deck = generateDeck();
+    const cutJoker = deck.pop();
+    const discardPile = [deck.pop()];
+
+    // Reset players for new round (but keep totalScore and eliminated status)
+    game.players.forEach(player => {
+        if (!player.eliminated) {
+            player.hand = [];
+            player.hasDrawn = false;
+            player.dropped = false; // Reset dropped status for new round
+            player.dropPoints = 0;
+            player.consecutiveTimeouts = 0;
+            
+            // Deal 13 cards
+            for (let i = 0; i < 13; i++) {
+                if (deck.length > 0) {
+                    player.hand.push(deck.pop());
+                }
+            }
+        } else {
+            player.hand = [];
+        }
+    });
+
+    game.deck = deck;
+    game.discardPile = discardPile;
+    game.cutJoker = cutJoker;
+    game.deckCount = deck.length;
+    game.turnCount = 0;
+
+    // Find first non-eliminated player for first turn
+    const firstPlayer = game.players.find(p => !p.eliminated);
+    if (firstPlayer) {
+        game.currentTurn = firstPlayer.id;
+    }
+
+    io.to(roomCode).emit('newRoundStarted', {
+        message: 'New round starting!'
+    });
+
+    // Send updated state to all players
+    room.players.forEach(p => {
+        io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
+    });
+
+    // Start timer for first player
+    if (firstPlayer) {
+        startTurnTimer(roomCode, firstPlayer.id);
+    }
+
+    console.log(`New round started in ${roomCode}`);
 }
 
 io.on('connection', (socket) => {
@@ -571,35 +676,70 @@ io.on('connection', (socket) => {
         const validation = validateDeclaration(groups || [], ungrouped || [], game.cutJoker);
         
         if (validation.valid) {
-            // Correct show - player wins
-            io.to(roomCode).emit('gameWon', { 
+            // Correct show - player wins this round
+            io.to(roomCode).emit('roundWon', { 
                 winner: player.name,
                 reason: 'Valid declaration!'
             });
             
-            console.log(`${player.name} won in ${roomCode}`);
+            console.log(`${player.name} won round in ${roomCode}`);
             
-            setTimeout(() => {
-                if (rooms[roomCode]) {
-                    rooms[roomCode].started = false;
-                    rooms[roomCode].gameState = null;
-                    if (turnTimers[roomCode]) {
-                        clearTimeout(turnTimers[roomCode]);
-                    }
+            // Calculate scores for this round (winner gets 0)
+            game.players.forEach(p => {
+                if (p.id === player.id) {
+                    // Winner gets 0 points
+                } else if (p.dropped) {
+                    // Already added drop points
+                } else if (p.eliminated) {
+                    // Already eliminated
+                } else {
+                    // Calculate penalty based on ungrouped cards
+                    // For now, add 80 points (can calculate actual later)
+                    p.totalScore += 80;
                 }
+            });
+
+            // Check for eliminations (250+ points)
+            game.players.forEach(p => {
+                if (p.totalScore >= 250 && !p.eliminated) {
+                    p.eliminated = true;
+                    io.to(roomCode).emit('playerEliminated', {
+                        playerName: p.name,
+                        reason: 'Reached 250 points'
+                    });
+                }
+            });
+
+            // Start new round after 3 seconds
+            setTimeout(() => {
+                startNewRound(roomCode);
             }, 3000);
+            
         } else {
-            // Wrong show - 80 points penalty
+            // Wrong show - 80 points penalty and elimination
             player.totalScore += 80;
+            player.eliminated = true;
+            player.hand = [];
             
-            // Count active players
-            const activePlayers = game.players.filter(p => !p.dropped && !p.eliminated);
+            io.to(roomCode).emit('wrongShow', {
+                player: player.name,
+                reason: validation.reason,
+                points: 80
+            });
             
-            if (activePlayers.length <= 2) {
-                // If only 2 players left (including this one), game ends
+            io.to(roomCode).emit('playerEliminated', {
+                playerName: player.name,
+                reason: 'Wrong show'
+            });
+
+            // Check if game should continue
+            const activePlayers = game.players.filter(p => !p.eliminated && p.totalScore < 250);
+            
+            if (activePlayers.length <= 1) {
+                // Game over - only one player left
                 io.to(roomCode).emit('gameWon', {
-                    winner: activePlayers.find(p => p.id !== player.id)?.name || 'Other player',
-                    reason: `${player.name} made wrong show!`
+                    winner: activePlayers[0]?.name || 'No one',
+                    reason: 'Last player standing!'
                 });
                 
                 setTimeout(() => {
@@ -612,30 +752,13 @@ io.on('connection', (socket) => {
                     }
                 }, 3000);
             } else {
-                // More than 2 players - eliminate this player and continue
-                player.eliminated = true;
-                player.hand = [];
-                
-                io.to(roomCode).emit('wrongShow', {
-                    player: player.name,
-                    reason: validation.reason,
-                    points: 80
-                });
-                
-                io.to(roomCode).emit('playerEliminated', {
-                    playerName: player.name
-                });
-
-                // Move to next player
-                moveToNextPlayer(rooms[roomCode]);
-
-                // Send updated state
-                rooms[roomCode].players.forEach(p => {
-                    io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-                });
-                
-                console.log(`${player.name} eliminated (wrong show) in ${roomCode}`);
+                // Continue with new round
+                setTimeout(() => {
+                    startNewRound(roomCode);
+                }, 3000);
             }
+            
+            console.log(`${player.name} eliminated (wrong show) in ${roomCode}`);
         }
     });
 
@@ -664,11 +787,11 @@ io.on('connection', (socket) => {
             clearTimeout(turnTimers[roomCode]);
         }
 
-        // Mark player as dropped
+        // Mark player as dropped for this round
         player.dropped = true;
         player.dropPoints = points;
         player.totalScore += points;
-        player.hand = []; // Hide cards
+        player.hand = []; // Hide/close cards
 
         io.to(roomCode).emit('playerDropped', {
             playerName: player.name,
@@ -676,12 +799,38 @@ io.on('connection', (socket) => {
             dropType: dropType
         });
 
-        // Check if only one player remains
-        const activePlayers = game.players.filter(p => !p.dropped && !p.eliminated);
-        if (activePlayers.length === 1) {
+        // Check if player should be eliminated (250+ points)
+        if (player.totalScore >= 250) {
+            player.eliminated = true;
+            io.to(roomCode).emit('playerEliminated', {
+                playerName: player.name,
+                reason: 'Reached 250 points'
+            });
+        }
+
+        // Check if only one player remains active in this round
+        const activeInRound = game.players.filter(p => !p.dropped && !p.eliminated);
+        if (activeInRound.length === 1) {
+            // Round ends - the last player wins
+            const winner = activeInRound[0];
+            io.to(roomCode).emit('roundWon', { 
+                winner: winner.name,
+                reason: 'All others dropped/eliminated in this round'
+            });
+            
+            setTimeout(() => {
+                startNewRound(roomCode);
+            }, 3000);
+            return;
+        }
+
+        // Check if all remaining players are eliminated (250+)
+        const playersUnder250 = game.players.filter(p => p.totalScore < 250 && !p.eliminated);
+        if (playersUnder250.length <= 1) {
+            // Game over
             io.to(roomCode).emit('gameWon', { 
-                winner: activePlayers[0].name,
-                reason: 'All others dropped/eliminated'
+                winner: playersUnder250[0]?.name || 'No one',
+                reason: 'Last player under 250 points!'
             });
             
             setTimeout(() => {
