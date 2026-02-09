@@ -2,9 +2,9 @@
   "name": "rummy-game-improved",
   "version": "3.0.0",
   "description": "Mobile-responsive multiplayer Rummy with 25/50 drop points",
-  "main": "server-mobile.js",
+  "main": "server-improved.js",
   "scripts": {
-    "start": "node server-mobile.js"
+    "start": "node server-improved.js"
   },
   "dependencies": {
     "express": "^4.18.2",
