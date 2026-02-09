@@ -751,6 +751,16 @@
         function showJoinRoom() {
             document.getElementById('joinRoomDiv').style.display = 'block';
         }
+        function createRoom() {
+  const name = document.getElementById('playerName').value.trim();
+
+  if (!name) {
+    showMessage('Enter your name', 'error');
+    return;
+  }
+
+  socket.emit('createRoom', { playerName: name });
+}
 
         function joinRoom() {
             const name = document.getElementById('playerName').value.trim();
@@ -761,6 +771,19 @@
             }
             socket.emit('joinRoom', { roomCode: code, playerName: name });
         }
+
+        socket.on('roomCreated', (data) => {
+  currentRoom = data.roomCode;
+
+  showMessage('Room created: ' + data.roomCode, 'success');
+
+  const roomCodeInput = document.getElementById('roomCode');
+  if (roomCodeInput) {
+    roomCodeInput.value = data.roomCode;
+  }
+
+  showScreen('lobbyScreen');
+});
 
         function startGame() {
             socket.emit('startGame', { roomCode: currentRoom });
