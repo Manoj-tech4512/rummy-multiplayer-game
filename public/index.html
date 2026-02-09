@@ -23,8 +23,7 @@ body {
 button {
   width: 100%;
   padding: 10px;
-  margin-top: 10px
-px;
+  margin-top: 10px;
   font-size: 16px;
 }
 input {
@@ -35,6 +34,14 @@ input {
 #playersList div {
   padding: 6px;
   border-bottom: 1px solid #ddd;
+}
+.card {
+  display: inline-block;
+  padding: 6px 10px;
+  margin: 4px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #f4f4f4;
 }
 .message {
   position: fixed;
@@ -84,14 +91,23 @@ input {
 <!-- GAME -->
 <div id="gameScreen" class="screen">
   <div class="lobby-container">
-    <h3>Game Started</h3>
+    <h3>🎴 Game Started</h3>
     <p>Room: <span id="gameRoomCode"></span></p>
+
+    <p id="turnInfo"></p>
+
+    <h4>Players</h4>
+    <div id="players"></div>
+
+    <h4>Your Hand</h4>
+    <div id="hand"></div>
   </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
+
 let currentRoom = null;
 let myPlayerId = null;
 let gameState = null;
@@ -163,18 +179,48 @@ socket.on('roomUpdate', room => {
   updatePlayers(room);
 });
 
-let gameState = null;
-
-socket.on("gameStarted", (state) => {
-  console.log("🎴 gameStarted", state);
-
-  gameState = state;          // 🔥 STORE GAME STATE
-  showGameScreen();
-  renderGame();               // 🔥 RENDER UI
+/* 🔥 GAME STARTED */
+socket.on('gameStarted', (state) => {
+  console.log('🎴 gameStarted', state);
+  gameState = state;
+  showScreen('gameScreen');
+  renderGame();
 });
 
+/* 🔥 GAME STATE UPDATES (VERY IMPORTANT) */
+socket.on('gameState', (state) => {
+  console.log('🔄 gameState update', state);
+  gameState = state;
+  renderGame();
+});
 
-/* PLAYERS LIST */
+/* RENDER GAME */
+function renderGame() {
+  if (!gameState) return;
+
+  // Turn info
+  turnInfo.textContent =
+    gameState.currentTurn === socket.id ? 'Your Turn' : 'Waiting for opponent...';
+
+  // Players
+  players.innerHTML = '';
+  gameState.players.forEach(p => {
+    const d = document.createElement('div');
+    d.textContent = `${p.name} (${p.cardCount} cards)`;
+    players.appendChild(d);
+  });
+
+  // Hand
+  hand.innerHTML = '';
+  gameState.hand.forEach(card => {
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.textContent = card.value + card.suit;
+    hand.appendChild(c);
+  });
+}
+
+/* PLAYERS LIST (WAITING SCREEN) */
 function updatePlayers(room) {
   playersList.innerHTML = '';
   room.players.forEach(p => {
