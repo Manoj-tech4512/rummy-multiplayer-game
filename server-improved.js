@@ -9,10 +9,8 @@ const io = socketIO(server);
 
 app.use(express.static(__dirname));
 
-app.use(express.static(path.join(__dirname, "public")));
-
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const rooms = {};
@@ -50,6 +48,15 @@ function shuffleDeck(deck) {
     return deck;
 }
 
+function getCardRank(card) {
+    if (card.value === 'JOKER') return 15;
+    if (card.value === 'A') return 14;
+    if (card.value === 'K') return 13;
+    if (card.value === 'Q') return 12;
+    if (card.value === 'J') return 11;
+    return parseInt(card.value) || 0;
+}
+
 function initializeGame(players) {
     const deck = generateDeck();
     const cutJoker = deck.pop();
@@ -65,7 +72,8 @@ function initializeGame(players) {
         dropPoints: 0,
         totalScore: 0,
         eliminated: false,
-        consecutiveTimeouts: 0
+        consecutiveTimeouts: 0,
+        totalTimeouts: 0 // Track total timeouts across entire game
     }));
 
     gamePlayers.forEach(player => {
@@ -81,7 +89,8 @@ function initializeGame(players) {
         players: gamePlayers,
         currentTurn: gamePlayers[0].id,
         deckCount: deck.length,
-        turnCount: 0
+        turnCount: 0,
+        isFirstRound: true // Track if this is the first round
     };
 }
 
@@ -101,6 +110,7 @@ function getPublicGameState(gameState, playerId) {
             eliminated: p.eliminated,
             dropPoints: p.dropPoints,
             totalScore: p.totalScore,
+            totalTimeouts: p.totalTimeouts || 0,
             hand: p.id === playerId ? p.hand : []
         })),
         currentTurn: gameState.currentTurn,
@@ -277,13 +287,15 @@ function handleTurnTimeout(roomCode, playerId) {
     
     if (!player || player.dropped || player.eliminated) return;
 
-    // Increment consecutive timeout counter
+    // Increment BOTH consecutive and total timeout counters
     player.consecutiveTimeouts = (player.consecutiveTimeouts || 0) + 1;
+    player.totalTimeouts = (player.totalTimeouts || 0) + 1;
 
-    console.log(`${player.name} timeout #${player.consecutiveTimeouts} in ${roomCode}`);
+    console.log(`${player.name} timeout - consecutive: ${player.consecutiveTimeouts}, total: ${player.totalTimeouts} in ${roomCode}, hasDrawn: ${player.hasDrawn}`);
 
-    if (player.consecutiveTimeouts >= 2) {
-        // Auto middle drop after 2 consecutive timeouts
+    // Check TOTAL timeouts for middle drop (2 total across entire game)
+    if (player.totalTimeouts >= 2) {
+        // Auto middle drop after 2 TOTAL timeouts
         player.dropped = true;
         player.dropPoints = 50;
         player.totalScore += 50;
@@ -292,8 +304,10 @@ function handleTurnTimeout(roomCode, playerId) {
         io.to(roomCode).emit('playerAutoDropped', {
             playerName: player.name,
             points: 50,
-            reason: 'timeout'
+            reason: '2 timeouts - middle drop'
         });
+
+        console.log(`${player.name} auto-dropped after ${player.totalTimeouts} total timeouts`);
 
         // Check if player should be eliminated (250+ points)
         if (player.totalScore >= 250) {
@@ -339,24 +353,38 @@ function handleTurnTimeout(roomCode, playerId) {
         // Move to next player
         moveToNextPlayer(room);
     } else {
-        // Auto-draw from pile and auto-discard
-        if (game.deck.length > 0) {
-            const drawnCard = game.deck.pop();
-            player.hand.push(drawnCard);
-            game.deckCount = game.deck.length;
-        }
+        // First timeout - auto-play
+        // Check if player has already drawn a card
+        if (player.hasDrawn) {
+            // Player already picked a card - just discard the last card (14th card)
+            console.log(`${player.name} timed out AFTER drawing - discarding from existing hand`);
+            
+            if (player.hand.length > 0) {
+                const discardedCard = player.hand.pop(); // Remove last card (the one just drawn)
+                game.discardPile.push(discardedCard);
+            }
+        } else {
+            // Player has NOT drawn yet - auto-draw and auto-discard
+            console.log(`${player.name} timed out BEFORE drawing - auto-draw and discard`);
+            
+            if (game.deck.length > 0) {
+                const drawnCard = game.deck.pop();
+                player.hand.push(drawnCard);
+                game.deckCount = game.deck.length;
+            }
 
-        // Auto-discard: Remove the LAST card (the one just drawn, 14th card)
-        if (player.hand.length > 0) {
-            const discardedCard = player.hand.pop(); // Changed from shift() to pop()
-            game.discardPile.push(discardedCard);
+            // Discard the card we just drew
+            if (player.hand.length > 0) {
+                const discardedCard = player.hand.pop();
+                game.discardPile.push(discardedCard);
+            }
         }
 
         player.hasDrawn = false;
 
         io.to(roomCode).emit('autoPlayExecuted', {
             playerName: player.name,
-            timeoutCount: player.consecutiveTimeouts
+            timeoutCount: player.totalTimeouts
         });
 
         // Move to next player
@@ -416,12 +444,17 @@ function startNewRound(roomCode) {
         return;
     }
 
+    // Rotate dealer for new round
+    const currentDealerIndex = game.dealerIndex || 0;
+    const newDealerIndex = (currentDealerIndex + 1) % game.players.length;
+    const firstTurnIndex = (newDealerIndex + 1) % game.players.length;
+
     // Reset for new round
     const deck = generateDeck();
     const cutJoker = deck.pop();
     const discardPile = [deck.pop()];
 
-    // Reset players for new round (but keep totalScore and eliminated status)
+    // Reset players for new round (but keep totalScore, eliminated status, and totalTimeouts)
     game.players.forEach(player => {
         if (!player.eliminated) {
             player.hand = [];
@@ -429,6 +462,7 @@ function startNewRound(roomCode) {
             player.dropped = false; // Reset dropped status for new round
             player.dropPoints = 0;
             player.consecutiveTimeouts = 0;
+            // KEEP totalTimeouts - don't reset it!
             
             // Deal 13 cards
             for (let i = 0; i < 13; i++) {
@@ -446,15 +480,16 @@ function startNewRound(roomCode) {
     game.cutJoker = cutJoker;
     game.deckCount = deck.length;
     game.turnCount = 0;
+    game.isFirstRound = false; // Mark as not first round
+    game.dealerIndex = newDealerIndex; // Update dealer
 
-    // Find first non-eliminated player for first turn
-    const firstPlayer = game.players.find(p => !p.eliminated);
-    if (firstPlayer) {
-        game.currentTurn = firstPlayer.id;
-    }
+    // Set first turn to player after new dealer
+    game.currentTurn = game.players[firstTurnIndex].id;
 
     io.to(roomCode).emit('newRoundStarted', {
-        message: 'New round starting!'
+        message: 'New round starting!',
+        dealer: game.players[newDealerIndex].name,
+        firstPlayer: game.players[firstTurnIndex].name
     });
 
     // Send updated state to all players
@@ -463,11 +498,9 @@ function startNewRound(roomCode) {
     });
 
     // Start timer for first player
-    if (firstPlayer) {
-        startTurnTimer(roomCode, firstPlayer.id);
-    }
+    startTurnTimer(roomCode, game.currentTurn);
 
-    console.log(`New round started in ${roomCode}`);
+    console.log(`New round started in ${roomCode}, Dealer: ${game.players[newDealerIndex].name}, First turn: ${game.players[firstTurnIndex].name}`);
 }
 
 io.on('connection', (socket) => {
@@ -535,18 +568,64 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const game = initializeGame(rooms[roomCode].players);
-        rooms[roomCode].gameState = game;
-        rooms[roomCode].started = true;
-
-        rooms[roomCode].players.forEach(player => {
-            io.to(player.id).emit('gameStarted', getPublicGameState(game, player.id));
+        // STEP 1: Each player picks a random card for seating
+        const rankingDeck = generateDeck();
+        const playerRankings = rooms[roomCode].players.map(player => {
+            const pickedCard = rankingDeck.pop();
+            const rank = getCardRank(pickedCard);
+            return {
+                ...player,
+                pickedCard: pickedCard,
+                rank: rank
+            };
         });
 
-        // Start timer for first player
-        startTurnTimer(roomCode, game.currentTurn);
+        // STEP 2: Sort players by rank (LOWEST to HIGHEST)
+        playerRankings.sort((a, b) => a.rank - b.rank);
 
-        console.log(`Game started in ${roomCode}`);
+        // STEP 3: Lowest rank player deals, next player gets first turn
+        const dealerIndex = 0; // Lowest rank
+        const firstTurnIndex = (dealerIndex + 1) % playerRankings.length;
+
+        // Update room with sorted players and dealer info
+        rooms[roomCode].players = playerRankings;
+        rooms[roomCode].dealerIndex = dealerIndex;
+
+        // Notify all players of seating arrangement
+        io.to(roomCode).emit('seatingArranged', {
+            players: playerRankings.map((p, idx) => ({
+                name: p.name,
+                pickedCard: p.pickedCard,
+                rank: p.rank,
+                isDealer: idx === dealerIndex,
+                seatPosition: idx
+            })),
+            dealer: playerRankings[dealerIndex].name,
+            firstPlayer: playerRankings[firstTurnIndex].name
+        });
+
+        console.log(`Seating arranged in ${roomCode}:`, playerRankings.map(p => `${p.name}(${p.pickedCard.value}${p.pickedCard.suit})`).join(', '));
+
+        // Wait 3 seconds for players to see arrangement, then start
+        setTimeout(() => {
+            const game = initializeGame(rooms[roomCode].players);
+            
+            // Set first turn to player after dealer
+            game.currentTurn = playerRankings[firstTurnIndex].id;
+            game.dealerIndex = dealerIndex;
+            
+            rooms[roomCode].gameState = game;
+            rooms[roomCode].started = true;
+
+            rooms[roomCode].players.forEach(player => {
+                io.to(player.id).emit('gameStarted', getPublicGameState(game, player.id));
+            });
+
+            // Start timer for first player
+            startTurnTimer(roomCode, game.currentTurn);
+
+            console.log(`Game started in ${roomCode}, Dealer: ${playerRankings[dealerIndex].name}, First turn: ${playerRankings[firstTurnIndex].name}`);
+        }, 3000);
     });
 
     socket.on('drawCard', (data) => {
@@ -765,7 +844,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('playerDrop', (data) => {
-        const { roomCode, dropType, points } = data;
+        const { roomCode } = data;
         
         if (!rooms[roomCode] || !rooms[roomCode].gameState) return;
 
@@ -789,11 +868,17 @@ io.on('connection', (socket) => {
             clearTimeout(turnTimers[roomCode]);
         }
 
+        // Determine drop points based on whether this is first round
+        const points = game.isFirstRound ? 25 : 50;
+        const dropType = game.isFirstRound ? 'First Drop' : 'Middle Drop';
+
         // Mark player as dropped for this round
         player.dropped = true;
         player.dropPoints = points;
         player.totalScore += points;
         player.hand = []; // Hide/close cards
+
+        console.log(`${player.name} dropped in ${roomCode}, isFirstRound: ${game.isFirstRound}, points: ${points}`);
 
         io.to(roomCode).emit('playerDropped', {
             playerName: player.name,
@@ -864,90 +949,3 @@ io.on('connection', (socket) => {
         handlePlayerLeave(socket, roomCode);
     });
 
-    socket.on('disconnect', () => {
-        console.log('Player disconnected:', socket.id);
-        
-        for (let roomCode in rooms) {
-            const room = rooms[roomCode];
-            if (room.players.find(p => p.id === socket.id)) {
-                handlePlayerLeave(socket, roomCode);
-            }
-        }
-    });
-});
-
-function handlePlayerLeave(socket, roomCode) {
-    if (!rooms[roomCode]) return;
-
-    const room = rooms[roomCode];
-    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-    
-    if (playerIndex === -1) return;
-
-    room.players.splice(playerIndex, 1);
-
-    // Clear timer if this room is empty
-    if (room.players.length === 0) {
-        if (turnTimers[roomCode]) {
-            clearTimeout(turnTimers[roomCode]);
-            delete turnTimers[roomCode];
-        }
-        delete rooms[roomCode];
-        console.log(`Room ${roomCode} deleted`);
-    } else {
-        if (room.host === socket.id) {
-            room.host = room.players[0].id;
-        }
-        
-        io.to(roomCode).emit('roomUpdate', room);
-        
-        if (room.started && room.gameState) {
-            const game = room.gameState;
-            const gamePlayerIndex = game.players.findIndex(p => p.id === socket.id);
-            
-            if (gamePlayerIndex !== -1) {
-                game.players.splice(gamePlayerIndex, 1);
-                
-                if (game.players.length > 0) {
-                    if (game.currentTurn === socket.id) {
-                        const activePlayers = game.players.filter(p => !p.dropped && !p.eliminated);
-                        if (activePlayers.length > 0) {
-                            game.currentTurn = activePlayers[0].id;
-                            startTurnTimer(roomCode, game.currentTurn);
-                        }
-                    }
-                    
-                    room.players.forEach(p => {
-                        io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-                    });
-                }
-            }
-        }
-    }
-
-    socket.leave(roomCode);
-}
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`
-╔═══════════════════════════════════════╗
-║   🎴 RUMMY GAME SERVER RUNNING 🎴     ║
-╚═══════════════════════════════════════╝
-
-Server: http://localhost:${PORT}
-
-✨ FEATURES:
-   ✓ Mobile responsive (landscape)
-   ✓ First drop: 25 points (before draw)
-   ✓ Middle drop: 50 points
-   ✓ 45-second turn timer
-   ✓ Auto drop after 2 timeouts
-   ✓ Drag to discard
-   ✓ Card grouping with spacing
-   ✓ Wrong show: eliminate player
-   ✓ Score tracking
-
-Ready!
-    `);
-});
