@@ -1,0 +1,22 @@
+{
+  "name": "rummy-multiplayer-game",
+  "version": "3.0.0",
+  "description": "Mobile-responsive multiplayer Rummy card game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [
+    "rummy",
+    "multiplayer",
+    "card-game"
+  ],
+  "license": "MIT"
+}
