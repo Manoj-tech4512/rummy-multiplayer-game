@@ -1,7 +1,6 @@
 {
-  "name": "rummy-game-improved",
+  "name": "rummy-multiplayer-game",
   "version": "3.0.0",
-  "description": "Mobile-responsive multiplayer Rummy with 25/50 drop points",
   "main": "server-mobile.js",
   "scripts": {
     "start": "node server-mobile.js"
@@ -12,11 +11,5 @@
   },
   "engines": {
     "node": ">=14.0.0"
-  },
-  "keywords": [
-    "rummy",
-    "multiplayer",
-    "card-game"
-  ],
-  "license": "MIT"
+  }
 }
