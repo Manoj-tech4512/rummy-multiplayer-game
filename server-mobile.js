@@ -10,7 +10,7 @@ const io = socketIO(server);
 app.use(express.static(__dirname));
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'rummy-mobile.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const rooms = {};
@@ -948,91 +948,3 @@ io.on('connection', (socket) => {
         const { roomCode } = data;
         handlePlayerLeave(socket, roomCode);
     });
-
-    socket.on('disconnect', () => {
-        console.log('Player disconnected:', socket.id);
-        
-        for (let roomCode in rooms) {
-            const room = rooms[roomCode];
-            if (room.players.find(p => p.id === socket.id)) {
-                handlePlayerLeave(socket, roomCode);
-            }
-        }
-    });
-});
-
-function handlePlayerLeave(socket, roomCode) {
-    if (!rooms[roomCode]) return;
-
-    const room = rooms[roomCode];
-    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-    
-    if (playerIndex === -1) return;
-
-    room.players.splice(playerIndex, 1);
-
-    // Clear timer if this room is empty
-    if (room.players.length === 0) {
-        if (turnTimers[roomCode]) {
-            clearTimeout(turnTimers[roomCode]);
-            delete turnTimers[roomCode];
-        }
-        delete rooms[roomCode];
-        console.log(`Room ${roomCode} deleted`);
-    } else {
-        if (room.host === socket.id) {
-            room.host = room.players[0].id;
-        }
-        
-        io.to(roomCode).emit('roomUpdate', room);
-        
-        if (room.started && room.gameState) {
-            const game = room.gameState;
-            const gamePlayerIndex = game.players.findIndex(p => p.id === socket.id);
-            
-            if (gamePlayerIndex !== -1) {
-                game.players.splice(gamePlayerIndex, 1);
-                
-                if (game.players.length > 0) {
-                    if (game.currentTurn === socket.id) {
-                        const activePlayers = game.players.filter(p => !p.dropped && !p.eliminated);
-                        if (activePlayers.length > 0) {
-                            game.currentTurn = activePlayers[0].id;
-                            startTurnTimer(roomCode, game.currentTurn);
-                        }
-                    }
-                    
-                    room.players.forEach(p => {
-                        io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-                    });
-                }
-            }
-        }
-    }
-
-    socket.leave(roomCode);
-}
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`
-╔═══════════════════════════════════════╗
-║   🎴 RUMMY GAME SERVER RUNNING 🎴     ║
-╚═══════════════════════════════════════╝
-
-Server: http://localhost:${PORT}
-
-✨ FEATURES:
-   ✓ Mobile responsive (landscape)
-   ✓ First drop: 25 points (before draw)
-   ✓ Middle drop: 50 points
-   ✓ 45-second turn timer
-   ✓ Auto drop after 2 timeouts
-   ✓ Drag to discard
-   ✓ Card grouping with spacing
-   ✓ Wrong show: eliminate player
-   ✓ Score tracking
-
-Ready!
-    `);
-});
