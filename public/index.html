@@ -448,6 +448,23 @@
             transform: translateY(-3px);
         }
 
+        .card.newly-drawn {
+            border: 3px solid #00ff00 !important;
+            animation: newCardPulse 2s ease-in-out;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.8) !important;
+        }
+
+        @keyframes newCardPulse {
+            0%, 100% { 
+                box-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
+                transform: scale(1);
+            }
+            50% { 
+                box-shadow: 0 0 30px rgba(0, 255, 0, 1);
+                transform: scale(1.08);
+            }
+        }
+
         .card.dragging {
             opacity: 0.4;
             transform: scale(1.1);
@@ -743,6 +760,8 @@
         let draggedCardIndex = null;
         let timerInterval = null;
         let timeRemaining = 45;
+        let newlyDrawnCardIndex = null; // Track which card was just drawn
+        let previousHandSize = 0; // Track hand size to detect new cards
 
         function showMessage(text, type = 'info') {
             const msg = document.createElement('div');
@@ -818,6 +837,9 @@
         }
 
         function createGroup() {
+            console.log('🎯 GROUP button clicked!');
+            console.log('Selected cards:', selectedCards);
+            
             if (selectedCards.length < 2) {
                 showMessage('Select at least 2 cards to group', 'error');
                 return;
@@ -840,7 +862,7 @@
             cardGroups.push(sortedIndices);
             selectedCards = [];
             
-            console.log('Group created:', sortedIndices);
+            console.log('✅ Group created:', sortedIndices);
             console.log('All groups:', cardGroups);
             
             renderHand();
@@ -849,6 +871,10 @@
         }
 
         function ungroupSelected() {
+            console.log('🎯 UNGROUP button clicked!');
+            console.log('Selected cards:', selectedCards);
+            console.log('Current groups:', cardGroups);
+            
             if (selectedCards.length === 0) {
                 showMessage('Select cards to ungroup', 'error');
                 return;
@@ -868,7 +894,7 @@
 
             selectedCards = [];
             
-            console.log('After ungrouping, groups:', cardGroups);
+            console.log('✅ After ungrouping, groups:', cardGroups);
             
             renderHand();
             updateButtons();
@@ -876,6 +902,10 @@
         }
 
         function discardSelected() {
+            console.log('🎯 DISCARD button clicked!');
+            console.log('Selected cards:', selectedCards);
+            console.log('Has drawn:', gameState?.hasDrawn);
+            
             if (selectedCards.length !== 1) {
                 showMessage('Select exactly 1 card to discard', 'error');
                 return;
@@ -887,6 +917,7 @@
             }
 
             const cardIndex = selectedCards[0];
+            console.log('✅ Discarding card at index:', cardIndex);
             socket.emit('discardCard', { roomCode: currentRoom, cardIndex });
             selectedCards = [];
         }
@@ -933,6 +964,10 @@
         }
 
         function declareWin() {
+            console.log('🎯 SHOW button clicked!');
+            console.log('Has drawn:', gameState?.hasDrawn);
+            console.log('Card groups:', cardGroups);
+            
             if (!gameState.hasDrawn) {
                 showMessage('Draw a card first!', 'error');
                 return;
@@ -974,7 +1009,7 @@
                 // Get ungrouped cards
                 const ungrouped = gameState.hand.filter((card, idx) => !groupedIndices.has(idx));
                 
-                console.log('Declaring with groups:', groups);
+                console.log('✅ Declaring with groups:', groups);
                 console.log('Ungrouped cards:', ungrouped);
                 
                 socket.emit('declareWin', { 
@@ -1236,6 +1271,18 @@
                 cardDiv.classList.add('selected');
             }
             
+            // Highlight newly drawn card (the last card in hand)
+            if (newlyDrawnCardIndex !== null && cardIndex === newlyDrawnCardIndex) {
+                cardDiv.classList.add('newly-drawn');
+                console.log('🆕 Highlighting newly drawn card at index:', cardIndex);
+                
+                // Remove highlight after 3 seconds
+                setTimeout(() => {
+                    newlyDrawnCardIndex = null;
+                    renderHand(); // Re-render to remove highlight
+                }, 3000);
+            }
+            
             cardDiv.innerHTML = `
                 <div class="card-value">${card.value}</div>
                 <div class="card-suit">${card.suit}</div>
@@ -1253,6 +1300,9 @@
             let startX, startY;
 
             cardDiv.addEventListener('touchstart', (e) => {
+                // Don't interfere with UI elements
+                if (e.target.tagName === 'BUTTON') return;
+                
                 startX = e.touches[0].clientX;
                 startY = e.touches[0].clientY;
                 isDragging = false;
@@ -1265,7 +1315,7 @@
                         cardDiv.classList.add('dragging');
                         console.log('Long press detected, dragging card index:', cardIndex);
                     }
-                }, 200); // 200ms long press
+                }, 300); // 300ms long press (increased for better tap detection)
             });
 
             cardDiv.addEventListener('touchmove', (e) => {
@@ -1323,23 +1373,26 @@
                 }
             });
 
-            // Desktop: Drag
-            cardDiv.draggable = true;
+            // Desktop: Drag (only enable on non-touch devices)
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            cardDiv.draggable = !isTouchDevice;
             
-            cardDiv.addEventListener('dragstart', (e) => {
-                if (!gameState || !gameState.hasDrawn || gameState.currentTurn !== myPlayerId) {
-                    e.preventDefault();
-                    return;
-                }
-                draggedCardIndex = cardIndex;
-                cardDiv.classList.add('dragging');
-                e.dataTransfer.effectAllowed = 'move';
-                console.log('Desktop drag started, card index:', cardIndex);
-            });
+            if (!isTouchDevice) {
+                cardDiv.addEventListener('dragstart', (e) => {
+                    if (!gameState || !gameState.hasDrawn || gameState.currentTurn !== myPlayerId) {
+                        e.preventDefault();
+                        return;
+                    }
+                    draggedCardIndex = cardIndex;
+                    cardDiv.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    console.log('Desktop drag started, card index:', cardIndex);
+                });
 
-            cardDiv.addEventListener('dragend', () => {
-                cardDiv.classList.remove('dragging');
-            });
+                cardDiv.addEventListener('dragend', () => {
+                    cardDiv.classList.remove('dragging');
+                });
+            }
 
             return cardDiv;
         }
@@ -1514,7 +1567,19 @@
         });
 
         socket.on('gameState', (state) => {
+            // Detect if a new card was drawn (hand size increased)
+            if (gameState && gameState.hand && state.hand) {
+                if (state.hand.length > gameState.hand.length) {
+                    // New card was drawn - it's at the end of the array
+                    newlyDrawnCardIndex = state.hand.length - 1;
+                    console.log('🎴 New card drawn! Index:', newlyDrawnCardIndex);
+                    console.log('🃏 Card is:', state.hand[newlyDrawnCardIndex]);
+                    showMessage('Card drawn! (Highlighted in green)', 'success');
+                }
+            }
+            
             gameState = state;
+            previousHandSize = state.hand ? state.hand.length : 0;
             renderGameState();
         });
 
