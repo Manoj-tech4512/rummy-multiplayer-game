@@ -27,7 +27,7 @@
         .container {
             width: 100%;
             height: 100vh;
-            height: 100dvh; /* Dynamic viewport height for mobile */
+            height: 100dvh;
             padding: 3px;
         }
 
@@ -154,7 +154,6 @@
             font-size: 16px;
         }
 
-        /* Timer Display */
         .timer-display {
             background: #1e3c72;
             color: white;
@@ -590,7 +589,6 @@
             }
         }
 
-        /* Mobile optimizations */
         @media screen and (max-width: 768px) {
             .card {
                 width: 42px;
@@ -755,13 +753,75 @@
         let currentRoom = null;
         let myPlayerId = null;
         let gameState = null;
-        let selectedCards = []; // Array of indices
-        let cardGroups = []; // Array of arrays of indices: [[0,1,2], [3,4,5]]
-        let draggedCardIndex = null;
+        let selectedCards = []; // Array of card IDs (suit+value)
+        let cardGroups = []; // Array of arrays of card IDs
+        let draggedCardId = null;
         let timerInterval = null;
         let timeRemaining = 45;
-        let newlyDrawnCardIndex = null; // Track which card was just drawn
-        let previousHandSize = 0; // Track hand size to detect new cards
+        let newlyDrawnCardId = null;
+        let cardOrderMap = new Map(); // Map card IDs to their display order
+
+        // Helper function to get unique card ID
+        function getCardId(card) {
+            return `${card.suit}_${card.value}_${Math.random().toString(36).substr(2, 9)}`;
+        }
+
+        // Preserve card order when receiving new gameState
+        function preserveCardOrder(newHand, oldHand) {
+            if (!oldHand || oldHand.length === 0) {
+                // First time, just use the order from server
+                newHand.forEach((card, index) => {
+                    if (card.id) {
+                        cardOrderMap.set(card.id, index);
+                    }
+                });
+                return newHand;
+            }
+
+            // Create a map of existing card IDs
+            const oldCardIds = new Set(oldHand.map(c => c.id));
+            const newCardIds = new Set(newHand.map(c => c.id));
+
+            // Find new cards (drawn)
+            const newCards = newHand.filter(c => !oldCardIds.has(c.id));
+            
+            // Find removed cards (discarded)
+            const removedCardIds = new Set([...oldCardIds].filter(id => !newCardIds.has(id)));
+
+            // Rebuild order map
+            const newOrderMap = new Map();
+            let orderIndex = 0;
+
+            // First, add existing cards in their original order
+            oldHand.forEach(oldCard => {
+                if (!removedCardIds.has(oldCard.id)) {
+                    const newCard = newHand.find(c => c.id === oldCard.id);
+                    if (newCard) {
+                        newOrderMap.set(newCard.id, orderIndex++);
+                    }
+                }
+            });
+
+            // Then add new cards at the end
+            newCards.forEach(card => {
+                newOrderMap.set(card.id, orderIndex++);
+            });
+
+            cardOrderMap = newOrderMap;
+
+            // Sort newHand according to the order map
+            return [...newHand].sort((a, b) => {
+                const orderA = cardOrderMap.get(a.id) ?? 999;
+                const orderB = cardOrderMap.get(b.id) ?? 999;
+                return orderA - orderB;
+            });
+        }
+
+        // Helper function to find card index by ID
+        function findCardIndexById(cardId) {
+            if (!gameState || !gameState.hand) return -1;
+            return gameState.hand.findIndex(card => card.id === cardId);
+        }
 
         function showMessage(text, type = 'info') {
             const msg = document.createElement('div');
@@ -823,31 +883,25 @@
             socket.emit('drawCard', { roomCode: currentRoom, source });
         }
 
-        function selectCard(cardIndex) {
-            const index = selectedCards.indexOf(cardIndex);
+        function selectCard(cardId) {
+            const index = selectedCards.indexOf(cardId);
             if (index > -1) {
                 selectedCards.splice(index, 1);
-                console.log('❌ Deselected card', cardIndex, '| Selected cards:', selectedCards);
             } else {
-                selectedCards.push(cardIndex);
-                console.log('✅ Selected card', cardIndex, '| Selected cards:', selectedCards);
+                selectedCards.push(cardId);
             }
             renderHand();
             updateButtons();
         }
 
         function createGroup() {
-            console.log('🎯 GROUP button clicked!');
-            console.log('Selected cards:', selectedCards);
-            
             if (selectedCards.length < 2) {
                 showMessage('Select at least 2 cards to group', 'error');
                 return;
             }
 
-            // Check if any selected cards are already in a group
-            const alreadyGrouped = selectedCards.some(idx => {
-                return cardGroups.some(group => group.includes(idx));
+            const alreadyGrouped = selectedCards.some(cardId => {
+                return cardGroups.some(group => group.includes(cardId));
             });
 
             if (alreadyGrouped) {
@@ -855,46 +909,31 @@
                 return;
             }
 
-            // Sort the indices before grouping for better display
-            const sortedIndices = [...selectedCards].sort((a, b) => a - b);
-            
-            // Add new group
-            cardGroups.push(sortedIndices);
+            cardGroups.push([...selectedCards]);
             selectedCards = [];
-            
-            console.log('✅ Group created:', sortedIndices);
-            console.log('All groups:', cardGroups);
             
             renderHand();
             updateButtons();
-            showMessage(`Group created with ${sortedIndices.length} cards!`, 'success');
+            showMessage(`Group created with ${cardGroups[cardGroups.length - 1].length} cards!`, 'success');
         }
 
         function ungroupSelected() {
-            console.log('🎯 UNGROUP button clicked!');
-            console.log('Selected cards:', selectedCards);
-            console.log('Current groups:', cardGroups);
-            
             if (selectedCards.length === 0) {
                 showMessage('Select cards to ungroup', 'error');
                 return;
             }
 
-            // Find which groups contain selected cards and remove them
             let removedCount = 0;
             
             cardGroups = cardGroups.map(group => {
-                // Remove selected cards from this group
-                const filtered = group.filter(idx => !selectedCards.includes(idx));
+                const filtered = group.filter(cardId => !selectedCards.includes(cardId));
                 if (filtered.length !== group.length) {
                     removedCount++;
                 }
                 return filtered;
-            }).filter(group => group.length > 0); // Remove empty groups
+            }).filter(group => group.length > 0);
 
             selectedCards = [];
-            
-            console.log('✅ After ungrouping, groups:', cardGroups);
             
             renderHand();
             updateButtons();
@@ -902,10 +941,6 @@
         }
 
         function discardSelected() {
-            console.log('🎯 DISCARD button clicked!');
-            console.log('Selected cards:', selectedCards);
-            console.log('Has drawn:', gameState?.hasDrawn);
-            
             if (selectedCards.length !== 1) {
                 showMessage('Select exactly 1 card to discard', 'error');
                 return;
@@ -916,8 +951,14 @@
                 return;
             }
 
-            const cardIndex = selectedCards[0];
-            console.log('✅ Discarding card at index:', cardIndex);
+            const cardId = selectedCards[0];
+            const cardIndex = findCardIndexById(cardId);
+            
+            if (cardIndex === -1) {
+                showMessage('Card not found!', 'error');
+                return;
+            }
+
             socket.emit('discardCard', { roomCode: currentRoom, cardIndex });
             selectedCards = [];
         }
@@ -929,34 +970,30 @@
             cardGroups = [];
             selectedCards = [];
 
-            // Create a copy of hand with indices
-            const indexedCards = gameState.hand.map((card, idx) => ({ card, originalIndex: idx }));
-
-            // Sort by suit then by rank
             const suitOrder = { '♠': 0, '♣': 1, '♥': 2, '♦': 3, '🃏': 4 };
             const rankOrder = { 
                 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, 
                 '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'JOKER': 14 
             };
 
-            indexedCards.sort((a, b) => {
-                // Compare suits first
-                const suitA = suitOrder[a.card.suit] ?? 99;
-                const suitB = suitOrder[b.card.suit] ?? 99;
+            gameState.hand.sort((a, b) => {
+                const suitA = suitOrder[a.suit] ?? 99;
+                const suitB = suitOrder[b.suit] ?? 99;
                 
                 if (suitA !== suitB) {
                     return suitA - suitB;
                 }
                 
-                // If same suit, compare ranks
-                const rankA = rankOrder[a.card.value] ?? 0;
-                const rankB = rankOrder[b.card.value] ?? 0;
+                const rankA = rankOrder[a.value] ?? 0;
+                const rankB = rankOrder[b.value] ?? 0;
                 
                 return rankA - rankB;
             });
 
-            // Update gameState.hand to be in sorted order
-            gameState.hand = indexedCards.map(item => item.card);
+            // Update card order map after sorting
+            gameState.hand.forEach((card, index) => {
+                cardOrderMap.set(card.id, index);
+            });
 
             renderHand();
             updateButtons();
@@ -964,30 +1001,23 @@
         }
 
         function declareWin() {
-            console.log('🎯 SHOW button clicked!');
-            console.log('Has drawn:', gameState?.hasDrawn);
-            console.log('Card groups:', cardGroups);
-            
             if (!gameState.hasDrawn) {
                 showMessage('Draw a card first!', 'error');
                 return;
             }
 
-            // Check if player has grouped their cards
             if (cardGroups.length === 0) {
                 if (!confirm('You have no groups! Are you sure you want to show? (This will likely be a wrong show)')) {
                     return;
                 }
             }
 
-            // Get all grouped card indices
-            const groupedIndices = new Set();
+            const groupedIds = new Set();
             cardGroups.forEach(group => {
-                group.forEach(idx => groupedIndices.add(idx));
+                group.forEach(cardId => groupedIds.add(cardId));
             });
 
-            // Get ungrouped card count
-            const ungroupedCount = gameState.hand.length - groupedIndices.size;
+            const ungroupedCount = gameState.hand.length - groupedIds.size;
 
             if (ungroupedCount > 1) {
                 showMessage(`You have ${ungroupedCount} ungrouped cards! Only 1 ungrouped card allowed.`, 'error');
@@ -1001,16 +1031,11 @@
             }
 
             if (confirm('Declare win? Wrong show = 80 pts penalty + ELIMINATION!')) {
-                // Convert indices to actual cards for validation
                 const groups = cardGroups.map(group => 
-                    group.map(idx => gameState.hand[idx]).filter(card => card)
+                    group.map(cardId => gameState.hand.find(card => card.id === cardId)).filter(card => card)
                 );
                 
-                // Get ungrouped cards
-                const ungrouped = gameState.hand.filter((card, idx) => !groupedIndices.has(idx));
-                
-                console.log('✅ Declaring with groups:', groups);
-                console.log('Ungrouped cards:', ungrouped);
+                const ungrouped = gameState.hand.filter(card => !groupedIds.has(card.id));
                 
                 socket.emit('declareWin', { 
                     roomCode: currentRoom,
@@ -1021,7 +1046,6 @@
         }
 
         function showDropOptions() {
-            // Can only drop before drawing first card
             if (gameState.hasDrawn) {
                 showMessage('Cannot drop after drawing card!', 'error');
                 return;
@@ -1058,23 +1082,12 @@
         }
 
         function updateButtons() {
-            if (!gameState) {
-                console.log('❌ No game state');
-                return;
-            }
+            if (!gameState) return;
 
             const myPlayer = gameState.players.find(p => p.id === myPlayerId);
             const isMyTurn = gameState && gameState.currentTurn === myPlayerId;
             const hasDrawn = gameState && gameState.hasDrawn;
             
-            console.log('🎮 Update buttons:', {
-                isMyTurn,
-                hasDrawn,
-                selectedCount: selectedCards.length,
-                selectedCards: selectedCards
-            });
-            
-            // If player is dropped or eliminated, disable all buttons
             if (myPlayer && (myPlayer.dropped || myPlayer.eliminated)) {
                 document.getElementById('groupBtn').disabled = true;
                 document.getElementById('ungroupBtn').disabled = true;
@@ -1084,27 +1097,20 @@
                 return;
             }
             
-            // Group button - SIMPLIFIED: Just need 2+ cards selected
             const canGroup = selectedCards.length >= 2;
             document.getElementById('groupBtn').disabled = !canGroup;
-            console.log('✨ Group button:', canGroup ? 'ENABLED' : 'DISABLED', 'Selected:', selectedCards.length);
             
-            // Ungroup button - need at least 1 selected card that IS in a group
-            const hasGroupedSelected = selectedCards.some(idx => {
-                return cardGroups.some(group => group.includes(idx));
+            const hasGroupedSelected = selectedCards.some(cardId => {
+                return cardGroups.some(group => group.includes(cardId));
             });
             document.getElementById('ungroupBtn').disabled = !hasGroupedSelected;
             
-            // Discard button - need exactly 1 card selected and must have drawn
             const canDiscard = selectedCards.length === 1 && hasDrawn && isMyTurn;
             document.getElementById('discardBtn').disabled = !canDiscard;
-            console.log('🗑️ Discard button:', canDiscard ? 'ENABLED' : 'DISABLED');
             
-            // Drop button - only before drawing
             const canDrop = !hasDrawn && isMyTurn;
             document.getElementById('dropBtn').disabled = !canDrop;
             
-            // Show button - only after drawing
             const canShow = hasDrawn && isMyTurn;
             document.getElementById('showBtn').disabled = !canShow;
         }
@@ -1130,6 +1136,7 @@
                 
                 if (timeRemaining <= 0) {
                     clearInterval(timerInterval);
+                    timerInterval = null;
                 }
             }, 1000);
         }
@@ -1148,11 +1155,9 @@
             const container = document.getElementById('handCards');
             container.innerHTML = '';
 
-            // Check if current player is dropped or eliminated
             const myPlayer = gameState.players.find(p => p.id === myPlayerId);
             
             if (myPlayer && myPlayer.dropped) {
-                // Show waiting message for dropped players
                 const waitingMsg = document.createElement('div');
                 waitingMsg.style.cssText = 'text-align: center; padding: 20px; color: white; font-size: 1.2em;';
                 waitingMsg.innerHTML = `
@@ -1169,7 +1174,6 @@
             }
 
             if (myPlayer && myPlayer.eliminated) {
-                // Show eliminated message
                 const eliminatedMsg = document.createElement('div');
                 eliminatedMsg.style.cssText = 'text-align: center; padding: 20px; color: white; font-size: 1.2em;';
                 eliminatedMsg.innerHTML = `
@@ -1185,7 +1189,6 @@
                 return;
             }
 
-            // Normal card rendering for active players
             if (gameState.hand.length === 0) {
                 document.getElementById('cardCount').textContent = 0;
                 updateGroupSummary(0, 0);
@@ -1193,13 +1196,12 @@
                 return;
             }
 
-            // Clean up invalid groups (indices that no longer exist)
+            // Clean up invalid groups
             cardGroups = cardGroups.map(group => {
-                return group.filter(idx => idx < gameState.hand.length);
-            }).filter(group => group.length >= 2); // Remove groups with less than 2 cards
+                return group.filter(cardId => gameState.hand.some(card => card.id === cardId));
+            }).filter(group => group.length >= 2);
 
-            // Create a set to track which indices have been rendered
-            const renderedIndices = new Set();
+            const renderedIds = new Set();
 
             // Render groups first
             cardGroups.forEach((group, groupIdx) => {
@@ -1207,36 +1209,32 @@
                 groupContainer.className = 'card-group-container';
                 groupContainer.setAttribute('data-group-number', `Group ${groupIdx + 1}`);
                 
-                group.forEach(cardIndex => {
-                    if (cardIndex < gameState.hand.length && !renderedIndices.has(cardIndex)) {
-                        const card = gameState.hand[cardIndex];
-                        const cardEl = createCardElement(card, cardIndex);
+                group.forEach(cardId => {
+                    const card = gameState.hand.find(c => c.id === cardId);
+                    if (card && !renderedIds.has(cardId)) {
+                        const cardEl = createCardElement(card);
                         groupContainer.appendChild(cardEl);
-                        renderedIndices.add(cardIndex); // Mark as rendered
+                        renderedIds.add(cardId);
                     }
                 });
                 
-                // Only add group if it has cards
                 if (groupContainer.children.length > 0) {
                     container.appendChild(groupContainer);
                 }
             });
 
-            // Render ungrouped cards (only those not already rendered)
+            // Render ungrouped cards
             let ungroupedCount = 0;
-            gameState.hand.forEach((card, index) => {
-                if (!renderedIndices.has(index)) {
-                    const cardEl = createCardElement(card, index);
+            gameState.hand.forEach(card => {
+                if (!renderedIds.has(card.id)) {
+                    const cardEl = createCardElement(card);
                     container.appendChild(cardEl);
-                    renderedIndices.add(index); // Mark as rendered
+                    renderedIds.add(card.id);
                     ungroupedCount++;
                 }
             });
 
-            const cardCountEl = document.getElementById("cardCount");
-if (cardCountEl) {
-  cardCountEl.textContent = gameState.hand.length;
-}
+            document.getElementById('cardCount').textContent = gameState.hand.length;
             updateGroupSummary(cardGroups.length, ungroupedCount);
             updateButtons();
         }
@@ -1255,10 +1253,10 @@ if (cardCountEl) {
             }
         }
 
-        function createCardElement(card, cardIndex) {
+        function createCardElement(card) {
             const cardDiv = document.createElement('div');
             cardDiv.className = 'card';
-            cardDiv.setAttribute('data-card-index', cardIndex);
+            cardDiv.setAttribute('data-card-id', card.id);
             
             if (card.suit === '♥' || card.suit === '♦') {
                 cardDiv.classList.add('red');
@@ -1270,19 +1268,16 @@ if (cardCountEl) {
                 cardDiv.classList.add('joker');
             }
             
-            if (selectedCards.includes(cardIndex)) {
+            if (selectedCards.includes(card.id)) {
                 cardDiv.classList.add('selected');
             }
             
-            // Highlight newly drawn card (the last card in hand)
-            if (newlyDrawnCardIndex !== null && cardIndex === newlyDrawnCardIndex) {
+            if (newlyDrawnCardId !== null && card.id === newlyDrawnCardId) {
                 cardDiv.classList.add('newly-drawn');
-                console.log('🆕 Highlighting newly drawn card at index:', cardIndex);
                 
-                // Remove highlight after 3 seconds
                 setTimeout(() => {
-                    newlyDrawnCardIndex = null;
-                    renderHand(); // Re-render to remove highlight
+                    newlyDrawnCardId = null;
+                    renderHand();
                 }, 3000);
             }
             
@@ -1291,34 +1286,30 @@ if (cardCountEl) {
                 <div class="card-suit">${card.suit}</div>
             `;
             
-            // Simple click to select
             cardDiv.addEventListener('click', (e) => {
                 e.stopPropagation();
-                selectCard(cardIndex);
+                selectCard(card.id);
             });
 
-            // Mobile: Long press and drag
+            // Mobile drag
             let longPressTimer;
             let isDragging = false;
             let startX, startY;
 
             cardDiv.addEventListener('touchstart', (e) => {
-                // Don't interfere with UI elements
                 if (e.target.tagName === 'BUTTON') return;
                 
                 startX = e.touches[0].clientX;
                 startY = e.touches[0].clientY;
                 isDragging = false;
 
-                // Start long press timer
                 longPressTimer = setTimeout(() => {
                     if (gameState && gameState.hasDrawn && gameState.currentTurn === myPlayerId) {
                         isDragging = true;
-                        draggedCardIndex = cardIndex;
+                        draggedCardId = card.id;
                         cardDiv.classList.add('dragging');
-                        console.log('Long press detected, dragging card index:', cardIndex);
                     }
-                }, 300); // 300ms long press (increased for better tap detection)
+                }, 300);
             });
 
             cardDiv.addEventListener('touchmove', (e) => {
@@ -1326,16 +1317,13 @@ if (cardCountEl) {
                 const deltaX = Math.abs(touch.clientX - startX);
                 const deltaY = Math.abs(touch.clientY - startY);
 
-                // Cancel long press if moved too much
                 if (!isDragging && (deltaX > 10 || deltaY > 10)) {
                     clearTimeout(longPressTimer);
                 }
 
-                // If dragging, prevent scroll and show visual feedback
                 if (isDragging) {
                     e.preventDefault();
                     
-                    // Check if over discard pile
                     const discardPile = document.getElementById('discardCard');
                     const rect = discardPile.getBoundingClientRect();
                     
@@ -1351,32 +1339,29 @@ if (cardCountEl) {
             cardDiv.addEventListener('touchend', (e) => {
                 clearTimeout(longPressTimer);
                 
-                if (isDragging && draggedCardIndex !== null) {
+                if (isDragging && draggedCardId !== null) {
                     const touch = e.changedTouches[0];
                     const discardPile = document.getElementById('discardCard');
                     const rect = discardPile.getBoundingClientRect();
                     
-                    console.log('Touch end - checking if dropped on discard');
-                    console.log('Touch:', touch.clientX, touch.clientY);
-                    console.log('Discard rect:', rect);
-                    
                     if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
                         touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-                        console.log('Discarding card index:', draggedCardIndex);
-                        socket.emit('discardCard', { roomCode: currentRoom, cardIndex: draggedCardIndex });
+                        const cardIndex = findCardIndexById(draggedCardId);
+                        if (cardIndex !== -1) {
+                            socket.emit('discardCard', { roomCode: currentRoom, cardIndex });
+                        }
                     }
                     
                     discardPile.classList.remove('drop-target');
                     cardDiv.classList.remove('dragging');
-                    draggedCardIndex = null;
+                    draggedCardId = null;
                     isDragging = false;
                 } else if (!isDragging) {
-                    // Quick tap - select
-                    selectCard(cardIndex);
+                    selectCard(card.id);
                 }
             });
 
-            // Desktop: Drag (only enable on non-touch devices)
+            // Desktop drag
             const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
             cardDiv.draggable = !isTouchDevice;
             
@@ -1386,10 +1371,9 @@ if (cardCountEl) {
                         e.preventDefault();
                         return;
                     }
-                    draggedCardIndex = cardIndex;
+                    draggedCardId = card.id;
                     cardDiv.classList.add('dragging');
                     e.dataTransfer.effectAllowed = 'move';
-                    console.log('Desktop drag started, card index:', cardIndex);
                 });
 
                 cardDiv.addEventListener('dragend', () => {
@@ -1400,34 +1384,32 @@ if (cardCountEl) {
             return cardDiv;
         }
 
-        // Setup drop zones for discard pile
         function setupDropZones() {
             const discardPile = document.getElementById('discardCard');
             
-            // Desktop drag over
             discardPile.addEventListener('dragover', (e) => {
-                if (draggedCardIndex !== null && gameState && gameState.hasDrawn) {
+                if (draggedCardId !== null && gameState && gameState.hasDrawn) {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'move';
                     discardPile.classList.add('drop-target');
                 }
             });
 
-            // Desktop drag leave
             discardPile.addEventListener('dragleave', () => {
                 discardPile.classList.remove('drop-target');
             });
 
-            // Desktop drop
             discardPile.addEventListener('drop', (e) => {
                 e.preventDefault();
                 discardPile.classList.remove('drop-target');
                 
-                if (draggedCardIndex === null || !gameState.hasDrawn) return;
+                if (draggedCardId === null || !gameState.hasDrawn) return;
 
-                console.log('Desktop drop - discarding card index:', draggedCardIndex);
-                socket.emit('discardCard', { roomCode: currentRoom, cardIndex: draggedCardIndex });
-                draggedCardIndex = null;
+                const cardIndex = findCardIndexById(draggedCardId);
+                if (cardIndex !== -1) {
+                    socket.emit('discardCard', { roomCode: currentRoom, cardIndex });
+                }
+                draggedCardId = null;
             });
         }
 
@@ -1502,7 +1484,6 @@ if (cardCountEl) {
                         statusText = '<div style="color: #ff9800; font-size: 0.65em;">DROPPED</div>';
                     }
                     
-                    // Show timeout count if any
                     let timeoutText = '';
                     if (player.totalTimeouts && player.totalTimeouts > 0) {
                         timeoutText = `<div style="color: #ffc107; font-size: 0.6em;">⏱️ ${player.totalTimeouts} timeout(s)</div>`;
@@ -1547,22 +1528,29 @@ if (cardCountEl) {
         });
 
         socket.on('seatingArranged', (data) => {
-            // Show seating arrangement modal
             const message = `🎴 SEATING ARRANGEMENT 🎴\n\n` +
                 data.players.map((p, idx) => 
-                    `${idx + 1}. ${p.name} - Picked ${p.pickedCard.value}${p.pickedCard.suit} (Rank: ${p.rank})${p.isDealer ? ' 🎯 DEALER' : ''}`
+                    `${idx + 1}. ${p.name} - ${p.pickedCard.value}${p.pickedCard.suit} (Rank: ${p.rank})${p.isDealer ? ' 🎯 DEALER' : ''}`
                 ).join('\n') +
-                `\n\n${data.dealer} will deal cards\n${data.firstPlayer} gets first turn!`;
+                `\n\n${data.dealer} is dealer\n${data.firstPlayer} gets first turn!`;
             
             alert(message);
-            
-            console.log('Seating arrangement:', data);
         });
 
         socket.on('gameStarted', (state) => {
+            // Initialize card order for new game
+            if (state.hand) {
+                state.hand.forEach((card, index) => {
+                    if (card.id) {
+                        cardOrderMap.set(card.id, index);
+                    }
+                });
+            }
+            
             gameState = state;
             cardGroups = [];
             selectedCards = [];
+            newlyDrawnCardId = null;
             document.getElementById('gameRoomCode').textContent = currentRoom;
             showScreen('gameScreen');
             renderGameState();
@@ -1570,41 +1558,50 @@ if (cardCountEl) {
         });
 
         socket.on('gameState', (state) => {
-            // Detect if a new card was drawn (hand size increased)
-            if (gameState && gameState.hand && state.hand) {
-                if (state.hand.length > gameState.hand.length) {
-                    // New card was drawn - it's at the end of the array
-                    newlyDrawnCardIndex = state.hand.length - 1;
-                    console.log('🎴 New card drawn! Index:', newlyDrawnCardIndex);
-                    console.log('🃏 Card is:', state.hand[newlyDrawnCardIndex]);
-                    showMessage('Card drawn! (Highlighted in green)', 'success');
-                }
+            const oldHandSize = gameState && gameState.hand ? gameState.hand.length : 0;
+            const oldHand = gameState ? gameState.hand : null;
+            
+            // Preserve card order before updating gameState
+            if (state.hand && state.hand.length > 0) {
+                state.hand = preserveCardOrder(state.hand, oldHand);
             }
             
             gameState = state;
-            previousHandSize = state.hand ? state.hand.length : 0;
+            
+            // Detect newly drawn card
+            if (state.hand && state.hand.length > oldHandSize) {
+                const newCard = state.hand[state.hand.length - 1];
+                newlyDrawnCardId = newCard.id;
+                showMessage('Card drawn! (Highlighted in green)', 'success');
+            }
+            
             renderGameState();
         });
 
         socket.on('timerStarted', (data) => {
             if (data.playerId === myPlayerId) {
                 startTimer(data.duration);
-            } else {
+            }
+        });
+
+        socket.on('timerStopped', (data) => {
+            if (data.playerId === myPlayerId) {
                 stopTimer();
             }
         });
 
         socket.on('roundWon', (data) => {
             showMessage(`${data.winner} won the round! ${data.reason}`, 'success');
+            stopTimer();
             setTimeout(() => {
                 showMessage('New round starting...', 'info');
             }, 2000);
         });
 
         socket.on('newRoundStarted', (data) => {
-            // Clear groups for new round
             cardGroups = [];
             selectedCards = [];
+            newlyDrawnCardId = null;
             
             const message = data.dealer 
                 ? `New round! Dealer: ${data.dealer}, First turn: ${data.firstPlayer}`
@@ -1614,6 +1611,7 @@ if (cardCountEl) {
         });
 
         socket.on('gameWon', (data) => {
+            stopTimer();
             alert(data.reason ? `🎉 ${data.winner} WINS THE GAME!\n${data.reason}` : `🎉 ${data.winner} WINS THE GAME!`);
         });
 
@@ -1623,10 +1621,6 @@ if (cardCountEl) {
 
         socket.on('wrongShow', (data) => {
             showMessage(`${data.player}: Wrong Show! 80 pts`, 'error');
-        });
-
-        socket.on('playerEliminated', (data) => {
-            showMessage(`${data.playerName} eliminated!`, 'info');
         });
 
         socket.on('playerDropped', (data) => {
