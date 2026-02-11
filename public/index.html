@@ -1233,7 +1233,10 @@
                 }
             });
 
-            document.getElementById('cardCount').textContent = gameState.hand.length;
+            const cardCountEl = document.getElementById("cardCount");
+if (cardCountEl) {
+  cardCountEl.textContent = gameState.hand.length;
+}
             updateGroupSummary(cardGroups.length, ungroupedCount);
             updateButtons();
         }
