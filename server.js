@@ -9,10 +9,11 @@ const io = socketIO(server);
 
 app.use(express.static(__dirname));
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+app.use(express.static(path.join(__dirname, "public")));
 
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 const rooms = {};
 const turnTimers = {};
 
