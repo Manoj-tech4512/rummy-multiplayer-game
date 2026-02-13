@@ -7,11 +7,14 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
 
-app.use(express.static(__dirname));
+/* SERVE PUBLIC FOLDER */
+app.use(express.static(path.join(__dirname, "public")));
 
+/* ROOT ROUTE */
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+
 
 const rooms = {};
 const TURN_TIME = 45000;
