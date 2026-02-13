@@ -3,43 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Casino Style Indian Rummy</title>
+<title>Casino Indian Rummy</title>
 
 <style>
 body{
     margin:0;
     font-family:Arial, Helvetica, sans-serif;
     background:#0b3d0b;
-    overflow:hidden;
     color:white;
+    overflow:hidden;
 }
 
-/* ---------- SCREENS ---------- */
-
-.screen{display:none;padding:20px}
+/* Screens */
+.screen{display:none;padding:20px;text-align:center}
 .active{display:block}
 
-/* ---------- LOBBY ---------- */
-
-input{
+/* Buttons */
+input,button{
     padding:8px;
     margin:5px;
     border-radius:6px;
     border:none;
 }
 button{
-    padding:8px 14px;
-    margin:5px;
-    border-radius:6px;
-    border:none;
-    cursor:pointer;
     background:#ffd700;
     font-weight:bold;
+    cursor:pointer;
 }
 button:hover{opacity:0.8}
 
-/* ---------- CASINO TABLE ---------- */
-
+/* Table */
 #table{
     position:relative;
     width:100vw;
@@ -47,20 +40,17 @@ button:hover{opacity:0.8}
     background:radial-gradient(circle at center,#145214,#0b3d0b 70%);
 }
 
+/* Players */
 .player{
     position:absolute;
-    width:140px;
+    width:130px;
     padding:6px;
     background:rgba(0,0,0,0.6);
     border-radius:10px;
     text-align:center;
     font-size:13px;
 }
-.current-turn{
-    border:2px solid gold;
-}
-
-/* 6 PLAYER POSITIONS */
+.current-turn{border:2px solid gold}
 
 .p1{bottom:10px;left:50%;transform:translateX(-50%)}
 .p2{top:10px;left:50%;transform:translateX(-50%)}
@@ -69,8 +59,7 @@ button:hover{opacity:0.8}
 .p5{top:20%;left:20%}
 .p6{top:20%;right:20%}
 
-/* ---------- CENTER ---------- */
-
+/* Center */
 #center{
     position:absolute;
     top:50%;
@@ -80,12 +69,11 @@ button:hover{opacity:0.8}
 }
 
 #discard{
-    font-size:22px;
+    font-size:24px;
     margin:10px;
 }
 
-/* ---------- HAND ---------- */
-
+/* Hand */
 #hand{
     position:absolute;
     bottom:0;
@@ -119,17 +107,6 @@ button:hover{opacity:0.8}
     border:3px solid gold;
     transform:translateY(-6px);
 }
-
-/* ---------- TIMER ---------- */
-
-#timer{
-    position:absolute;
-    top:10px;
-    right:20px;
-    font-size:20px;
-    font-weight:bold;
-    color:yellow;
-}
 </style>
 </head>
 
@@ -139,6 +116,7 @@ button:hover{opacity:0.8}
 <div id="lobby" class="screen active">
     <h2>🎰 Casino Indian Rummy</h2>
     <input id="name" placeholder="Your Name">
+    <br>
     <button onclick="createRoom()">Create Room</button>
     <br>
     <input id="roomCode" placeholder="Room Code">
@@ -156,22 +134,15 @@ button:hover{opacity:0.8}
 <div id="game" class="screen">
 <div id="table">
 
-<div id="timer"></div>
-
-<!-- PLAYERS -->
 <div id="playersArea"></div>
 
-<!-- CENTER -->
 <div id="center">
     <div id="discard"></div>
     <button onclick="drawCard('deck')">Draw Deck</button>
     <button onclick="drawCard('discard')">Draw Discard</button>
     <button onclick="discardSelected()">Discard</button>
-    <button onclick="createGroup()">Group</button>
-    <button onclick="declareShow()">Show</button>
 </div>
 
-<!-- HAND -->
 <div id="hand"></div>
 
 </div>
@@ -181,23 +152,18 @@ button:hover{opacity:0.8}
 <script>
 
 const socket = io();
+
 let currentRoom=null;
-let myId=null;
 let gameState=null;
 let selected=[];
-let groups=[];
-let timerInterval=null;
-let timeLeft=45;
 
-/* ----------- UI ----------- */
-
+/* Screen Switch */
 function show(id){
     document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
     document.getElementById(id).classList.add("active");
 }
 
-/* ----------- ROOM ----------- */
-
+/* Room */
 function createRoom(){
     const name=document.getElementById("name").value;
     socket.emit("createRoom",{playerName:name});
@@ -213,21 +179,7 @@ function startGame(){
     socket.emit("startGame",{roomCode:currentRoom});
 }
 
-/* ----------- TIMER ----------- */
-
-function startTimer(){
-    clearInterval(timerInterval);
-    timeLeft=45;
-    document.getElementById("timer").innerText="Time: 45";
-    timerInterval=setInterval(()=>{
-        timeLeft--;
-        document.getElementById("timer").innerText="Time: "+timeLeft;
-        if(timeLeft<=0) clearInterval(timerInterval);
-    },1000);
-}
-
-/* ----------- GAME ACTIONS ----------- */
-
+/* Game Actions */
 function drawCard(source){
     socket.emit("drawCard",{roomCode:currentRoom,source});
 }
@@ -244,43 +196,10 @@ function discardSelected(){
     selected=[];
 }
 
-function createGroup(){
-    if(selected.length<3){
-        alert("Minimum 3 cards");
-        return;
-    }
-    groups.push([...selected]);
-    selected=[];
-    render();
-}
-
-function declareShow(){
-    const groupedCards=[];
-    groups.forEach(g=>{
-        groupedCards.push(
-            g.map(id=>gameState.hand.find(c=>c.id===id))
-        );
-    });
-
-    const groupedIds=groups.flat();
-    const ungrouped=gameState.hand.filter(
-        c=>!groupedIds.includes(c.id)
-    );
-
-    socket.emit("declareWin",{
-        roomCode:currentRoom,
-        groups:groupedCards,
-        ungrouped
-    });
-}
-
-/* ----------- RENDER ----------- */
-
+/* Render */
 function render(){
-
     if(!gameState) return;
 
-    /* Players */
     const area=document.getElementById("playersArea");
     area.innerHTML="";
 
@@ -298,7 +217,6 @@ function render(){
         area.appendChild(div);
     });
 
-    /* Discard */
     const discard=document.getElementById("discard");
     discard.innerHTML="";
     const top=gameState.discardPile.slice(-1)[0];
@@ -306,7 +224,6 @@ function render(){
         discard.innerHTML=`${top.value} ${top.suit}`;
     }
 
-    /* Hand */
     const hand=document.getElementById("hand");
     hand.innerHTML="";
     gameState.hand.forEach(card=>{
@@ -318,6 +235,7 @@ function render(){
             div.classList.add("selected");
 
         div.innerHTML=`${card.value}<br>${card.suit}`;
+
         div.onclick=()=>{
             if(selected.includes(card.id))
                 selected=selected.filter(id=>id!==card.id);
@@ -325,16 +243,21 @@ function render(){
                 selected.push(card.id);
             render();
         };
+
         hand.appendChild(div);
     });
 }
 
-/* ----------- SOCKET ----------- */
+/* Socket Events */
 
 socket.on("roomCreated",data=>{
     currentRoom=data.roomCode;
-    myId=socket.id;
     document.getElementById("roomDisplay").innerText=currentRoom;
+    show("waiting");
+});
+
+socket.on("roomJoined",data=>{
+    currentRoom=data.roomCode;
     show("waiting");
 });
 
@@ -348,14 +271,10 @@ socket.on("roomUpdate",room=>{
 
 socket.on("gameState",state=>{
     gameState=state;
+    show("game");   // IMPORTANT FIX
     render();
 });
 
-socket.on("timerStarted",()=>startTimer());
-
-socket.on("roundWon",data=>alert("Winner: "+data.winner));
-socket.on("wrongShow",data=>alert("Wrong Show by "+data.player));
-socket.on("gameWon",data=>alert("Game Winner: "+data.winner));
 socket.on("error",msg=>alert(msg));
 
 </script>
