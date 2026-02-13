@@ -14,23 +14,8 @@ body{
     color:white;
 }
 
-/* Screens */
 .screen{display:none;height:100vh;width:100vw}
 .active{display:block}
-
-/* Buttons */
-input,button{
-    padding:10px;
-    margin:8px;
-    border-radius:8px;
-    border:none;
-}
-button{
-    background:#ffd700;
-    font-weight:bold;
-    cursor:pointer;
-}
-button:hover{opacity:0.8}
 
 /* Casino Table */
 #table{
@@ -40,7 +25,6 @@ button:hover{opacity:0.8}
     background:radial-gradient(circle at center,#0f5c0f,#063d06 70%);
 }
 
-/* Oval Table Shape */
 #table::before{
     content:"";
     position:absolute;
@@ -64,11 +48,9 @@ button:hover{opacity:0.8}
     text-align:center;
     font-size:12px;
 }
-.current-turn{
-    border:2px solid gold;
-}
+.current-turn{border:2px solid gold}
 
-/* 6 Positions */
+/* Positions */
 .p1{bottom:15px;left:50%;transform:translateX(-50%)}
 .p2{top:15px;left:50%;transform:translateX(-50%)}
 .p3{left:10px;top:50%;transform:translateY(-50%)}
@@ -76,7 +58,7 @@ button:hover{opacity:0.8}
 .p5{top:18%;left:20%}
 .p6{top:18%;right:20%}
 
-/* Center Area */
+/* Center */
 #center{
     position:absolute;
     top:50%;
@@ -86,12 +68,20 @@ button:hover{opacity:0.8}
     z-index:10;
 }
 
-#discard{
-    font-size:28px;
-    margin-bottom:10px;
+button{
+    padding:8px 14px;
+    margin:5px;
+    border-radius:8px;
+    border:none;
+    font-weight:bold;
+    cursor:pointer;
+    background:#ffd700;
 }
 
-/* Player Hand */
+#discard{font-size:28px;margin-bottom:10px}
+#wildJoker{color:yellow;margin-bottom:10px}
+
+/* Hand */
 #hand{
     position:absolute;
     bottom:0;
@@ -126,45 +116,39 @@ button:hover{opacity:0.8}
     border:3px solid gold;
     transform:translateY(-5px);
 }
+.card.joker{
+    border:3px solid purple;
+    background:#ffe6ff;
+}
 
-@media(max-width:768px){
-    .player{width:100px;font-size:11px}
-    .card{width:40px;height:60px}
+#timer{
+    position:absolute;
+    top:10px;
+    right:20px;
+    font-size:18px;
+    color:yellow;
 }
 </style>
 </head>
 
 <body>
 
-<!-- LOBBY -->
-<div id="lobby" class="screen active" style="text-align:center;padding-top:50px">
-    <h2>🎰 Casino Indian Rummy</h2>
-    <input id="name" placeholder="Your Name">
-    <br>
-    <button onclick="createRoom()">Create Room</button>
-    <br>
-    <input id="roomCode" placeholder="Room Code">
-    <button onclick="joinRoom()">Join Room</button>
-</div>
-
-<!-- WAITING -->
-<div id="waiting" class="screen" style="text-align:center;padding-top:40px">
-    <h3>Room: <span id="roomDisplay"></span></h3>
-    <div id="waitingPlayers"></div>
-    <button onclick="startGame()">Start Game</button>
-</div>
-
-<!-- GAME -->
-<div id="game" class="screen">
+<div id="game" class="screen active">
 <div id="table">
 
+<div id="timer"></div>
 <div id="playersArea"></div>
 
 <div id="center">
+    <div id="wildJoker"></div>
     <div id="discard"></div>
+
     <button onclick="drawCard('deck')">Draw Deck</button>
     <button onclick="drawCard('discard')">Draw Discard</button>
     <button onclick="discardSelected()">Discard</button>
+    <button onclick="createGroup()">Group</button>
+    <button onclick="ungroup()">Ungroup</button>
+    <button onclick="declareShow()">Show</button>
 </div>
 
 <div id="hand"></div>
@@ -176,56 +160,84 @@ button:hover{opacity:0.8}
 <script>
 
 const socket = io();
-let currentRoom=null;
 let gameState=null;
 let selected=[];
+let groups=[];
+let timerInterval;
 
-/* Screen Switch */
-function show(id){
-    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
-    document.getElementById(id).classList.add("active");
-}
-
-/* Room */
-function createRoom(){
-    const name=document.getElementById("name").value;
-    socket.emit("createRoom",{playerName:name});
-}
-
-function joinRoom(){
-    const name=document.getElementById("name").value;
-    const code=document.getElementById("roomCode").value;
-    socket.emit("joinRoom",{playerName:name,roomCode:code});
-}
-
-function startGame(){
-    socket.emit("startGame",{roomCode:currentRoom});
-}
-
-/* Game Actions */
+/* Draw */
 function drawCard(source){
-    socket.emit("drawCard",{roomCode:currentRoom,source});
+    socket.emit("drawCard",{roomCode:gameState.roomCode,source});
 }
 
+/* Discard */
 function discardSelected(){
     if(selected.length!==1){
         alert("Select 1 card");
         return;
     }
     socket.emit("discardCard",{
-        roomCode:currentRoom,
+        roomCode:gameState.roomCode,
         cardId:selected[0]
     });
     selected=[];
+}
+
+/* Group */
+function createGroup(){
+    if(selected.length<3){
+        alert("Select minimum 3 cards");
+        return;
+    }
+    groups.push([...selected]);
+    selected=[];
+    render();
+}
+
+/* Ungroup */
+function ungroup(){
+    if(selected.length===0){
+        alert("Select cards to ungroup");
+        return;
+    }
+
+    groups = groups.map(group =>
+        group.filter(id => !selected.includes(id))
+    ).filter(group => group.length>=2);
+
+    selected=[];
+    render();
+}
+
+/* Show */
+function declareShow(){
+
+    const groupedCards=[];
+    groups.forEach(g=>{
+        groupedCards.push(
+            g.map(id=>gameState.hand.find(c=>c.id===id))
+        );
+    });
+
+    const groupedIds=groups.flat();
+    const ungrouped=gameState.hand.filter(
+        c=>!groupedIds.includes(c.id)
+    );
+
+    socket.emit("declareWin",{
+        roomCode:gameState.roomCode,
+        groups:groupedCards,
+        ungrouped
+    });
 }
 
 /* Render */
 function render(){
     if(!gameState) return;
 
+    /* Players */
     const area=document.getElementById("playersArea");
     area.innerHTML="";
-
     gameState.players.forEach((p,i)=>{
         const div=document.createElement("div");
         div.className="player p"+(i+1);
@@ -240,24 +252,39 @@ function render(){
         area.appendChild(div);
     });
 
-    const discard=document.getElementById("discard");
-    discard.innerHTML="";
-    const top=gameState.discardPile.slice(-1)[0];
-    if(top){
-        discard.innerHTML=`${top.value} ${top.suit}`;
+    /* Wild Joker */
+    if(gameState.cutJoker){
+        document.getElementById("wildJoker").innerHTML=
+            "Wild Joker: "+gameState.cutJoker.value+" "+gameState.cutJoker.suit;
     }
 
+    /* Discard */
+    const top=gameState.discardPile.slice(-1)[0];
+    if(top){
+        document.getElementById("discard").innerHTML=
+            top.value+" "+top.suit;
+    }
+
+    /* Hand */
     const hand=document.getElementById("hand");
     hand.innerHTML="";
+
     gameState.hand.forEach(card=>{
         const div=document.createElement("div");
         div.className="card";
+
         if(card.suit==="♥"||card.suit==="♦")
             div.classList.add("red");
+
+        if(card.value==="JOKER" ||
+           card.value===gameState.cutJoker.value){
+            div.classList.add("joker");
+        }
+
         if(selected.includes(card.id))
             div.classList.add("selected");
 
-        div.innerHTML=`${card.value}<br>${card.suit}`;
+        div.innerHTML=card.value+"<br>"+card.suit;
 
         div.onclick=()=>{
             if(selected.includes(card.id))
@@ -271,36 +298,27 @@ function render(){
     });
 }
 
-/* Socket Events */
+/* Timer */
+socket.on("timerStarted",()=>{
+    let time=45;
+    clearInterval(timerInterval);
+    document.getElementById("timer").innerText="Time: 45";
 
-socket.on("roomCreated",data=>{
-    currentRoom=data.roomCode;
-    document.getElementById("roomDisplay").innerText=currentRoom;
-    show("waiting");
-});
-
-socket.on("roomJoined",data=>{
-    currentRoom=data.roomCode;
-    show("waiting");
-});
-
-socket.on("roomUpdate",room=>{
-    const div=document.getElementById("waitingPlayers");
-    div.innerHTML="";
-    room.players.forEach(p=>{
-        div.innerHTML+=`<div>${p.name}</div>`;
-    });
+    timerInterval=setInterval(()=>{
+        time--;
+        document.getElementById("timer").innerText="Time: "+time;
+        if(time<=0) clearInterval(timerInterval);
+    },1000);
 });
 
 socket.on("gameState",state=>{
     gameState=state;
-    show("game");
     render();
 });
 
-socket.on("error",msg=>alert(msg));
+socket.on("wrongShow",d=>alert("Wrong Show by "+d.player));
+socket.on("roundWon",d=>alert("Winner: "+d.winner));
 
 </script>
-
 </body>
 </html>
