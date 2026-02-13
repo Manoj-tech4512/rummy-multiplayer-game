@@ -3,58 +3,103 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rummy Multiplayer</title>
+<title>6 Player Indian Rummy</title>
 
 <style>
 body {
     margin:0;
-    font-family:Arial;
+    font-family: Arial;
     background:#1e3c72;
+    color:white;
+    overflow:hidden;
 }
 .screen { display:none; padding:20px; }
 .active { display:block; }
 
+button {
+    padding:8px 14px;
+    margin:5px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+}
+
 .card {
     width:50px;
     height:70px;
-    border:2px solid black;
-    border-radius:6px;
     background:white;
-    display:inline-flex;
+    border-radius:6px;
+    border:2px solid black;
+    display:flex;
     flex-direction:column;
     justify-content:center;
     align-items:center;
-    margin:3px;
+    margin:4px;
     cursor:pointer;
+    color:black;
+    font-weight:bold;
 }
 .card.red { color:red; }
 .card.selected {
     border:3px solid gold;
-    transform:translateY(-5px);
+    transform:translateY(-6px);
 }
-button { padding:8px 12px; margin:5px; }
+
+#hand {
+    display:flex;
+    flex-wrap:wrap;
+    max-height:200px;
+    overflow-y:auto;
+}
+
+.player-box {
+    background:rgba(255,255,255,0.15);
+    padding:8px;
+    border-radius:8px;
+    margin:4px;
+    font-size:14px;
+}
+.current-turn {
+    border:2px solid gold;
+}
+
+#playersArea {
+    display:flex;
+    flex-wrap:wrap;
+}
+
+#timer {
+    font-size:20px;
+    font-weight:bold;
+    color:yellow;
+}
 </style>
 </head>
 
 <body>
 
+<!-- LOBBY -->
 <div id="lobby" class="screen active">
-    <h2>🎴 Rummy Game</h2>
+    <h2>🎴 Indian Rummy (6 Players)</h2>
     <input id="name" placeholder="Your Name"><br>
     <button onclick="createRoom()">Create Room</button>
-    <button onclick="joinRoom()">Join Room</button>
     <input id="roomCode" placeholder="Room Code">
+    <button onclick="joinRoom()">Join Room</button>
 </div>
 
+<!-- WAITING -->
 <div id="waiting" class="screen">
     <h3>Room: <span id="roomDisplay"></span></h3>
-    <div id="players"></div>
+    <div id="waitingPlayers"></div>
     <button onclick="startGame()">Start Game</button>
 </div>
 
+<!-- GAME -->
 <div id="game" class="screen">
     <h3>Room: <span id="gameRoom"></span></h3>
-    <div id="turnInfo"></div>
+    <div id="timer"></div>
+
+    <div id="playersArea"></div>
 
     <h4>Discard Pile</h4>
     <div id="discardPile"></div>
@@ -62,29 +107,35 @@ button { padding:8px 12px; margin:5px; }
     <h4>Your Cards (<span id="cardCount"></span>)</h4>
     <div id="hand"></div>
 
-    <button onclick="drawCard('deck')">Draw Deck</button>
-    <button onclick="drawCard('discard')">Draw Discard</button>
-    <button onclick="discardSelected()">Discard</button>
-    <button onclick="declareShow()">Show</button>
+    <div>
+        <button onclick="drawCard('deck')">Draw Deck</button>
+        <button onclick="drawCard('discard')">Draw Discard</button>
+        <button onclick="discardSelected()">Discard</button>
+        <button onclick="createGroup()">Group</button>
+        <button onclick="declareShow()">Show</button>
+    </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const socket = io();
 
+const socket = io();
 let currentRoom=null;
 let myId=null;
 let gameState=null;
 let selected=[];
+let groups=[];
+let timerInterval=null;
+let timeLeft=45;
 
-/* ---------- UI ---------- */
+/* ========== UI ========== */
 
 function show(id){
     document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
     document.getElementById(id).classList.add("active");
 }
 
-/* ---------- ROOM ---------- */
+/* ========== ROOM ========== */
 
 function createRoom(){
     const name=document.getElementById("name").value;
@@ -101,70 +152,112 @@ function startGame(){
     socket.emit("startGame",{roomCode:currentRoom});
 }
 
-/* ---------- GAME ---------- */
+/* ========== TIMER ========== */
+
+function startTimer(){
+    clearInterval(timerInterval);
+    timeLeft=45;
+    document.getElementById("timer").innerText="Time: 45";
+    timerInterval=setInterval(()=>{
+        timeLeft--;
+        document.getElementById("timer").innerText="Time: "+timeLeft;
+        if(timeLeft<=0){
+            clearInterval(timerInterval);
+        }
+    },1000);
+}
+
+/* ========== GAME ACTIONS ========== */
 
 function drawCard(source){
     socket.emit("drawCard",{roomCode:currentRoom,source});
 }
 
-/* ---- FIXED DISCARD (BY CARD ID) ---- */
-
 function discardSelected(){
-    if(selected.length!==1) return alert("Select 1 card");
-
+    if(selected.length!==1){
+        alert("Select exactly 1 card");
+        return;
+    }
     socket.emit("discardCard",{
         roomCode:currentRoom,
         cardId:selected[0]
     });
-
     selected=[];
 }
 
-/* ---------- SHOW ---------- */
+function createGroup(){
+    if(selected.length<3){
+        alert("Select minimum 3 cards");
+        return;
+    }
+    groups.push([...selected]);
+    selected=[];
+    render();
+}
 
 function declareShow(){
-
-    const groups = [];
-    const ungrouped = [];
-
-    gameState.hand.forEach(card=>{
-        if(selected.includes(card.id))
-            groups.push([card]);
-        else
-            ungrouped.push(card);
+    const groupedCards=[];
+    groups.forEach(g=>{
+        groupedCards.push(
+            g.map(id=>gameState.hand.find(c=>c.id===id))
+        );
     });
+
+    const groupedIds = groups.flat();
+    const ungrouped = gameState.hand.filter(
+        c=>!groupedIds.includes(c.id)
+    );
 
     socket.emit("declareWin",{
         roomCode:currentRoom,
-        groups,
+        groups:groupedCards,
         ungrouped
     });
 }
 
-/* ---------- RENDER ---------- */
+/* ========== RENDER ========== */
 
 function render(){
+
     if(!gameState) return;
 
-    document.getElementById("turnInfo").innerText =
-        gameState.currentTurn===myId ? "YOUR TURN" : "Waiting...";
+    /* Players */
+    const area=document.getElementById("playersArea");
+    area.innerHTML="";
+    gameState.players.forEach(p=>{
+        const div=document.createElement("div");
+        div.className="player-box";
+        if(p.id===gameState.currentTurn)
+            div.classList.add("current-turn");
 
-    document.getElementById("cardCount").innerText =
-        gameState.hand.length;
+        div.innerHTML=`
+            <div>${p.name}</div>
+            <div>Cards: ${p.cardCount}</div>
+            <div>Score: ${p.totalScore}</div>
+        `;
+        area.appendChild(div);
+    });
 
-    /* Render Hand */
-    const handDiv=document.getElementById("hand");
-    handDiv.innerHTML="";
+    /* Discard */
+    const discard=document.getElementById("discardPile");
+    discard.innerHTML="";
+    const top=gameState.discardPile.slice(-1)[0];
+    if(top){
+        discard.innerHTML=`${top.value} ${top.suit}`;
+    }
+
+    /* Hand */
+    const hand=document.getElementById("hand");
+    hand.innerHTML="";
     gameState.hand.forEach(card=>{
         const div=document.createElement("div");
         div.className="card";
         if(card.suit==="♥"||card.suit==="♦")
             div.classList.add("red");
-
         if(selected.includes(card.id))
             div.classList.add("selected");
 
-        div.innerHTML=`<div>${card.value}</div><div>${card.suit}</div>`;
+        div.innerHTML=`${card.value}<br>${card.suit}`;
 
         div.onclick=()=>{
             if(selected.includes(card.id))
@@ -174,19 +267,13 @@ function render(){
             render();
         };
 
-        handDiv.appendChild(div);
+        hand.appendChild(div);
     });
 
-    /* Discard */
-    const discardDiv=document.getElementById("discardPile");
-    discardDiv.innerHTML="";
-    const top=gameState.discardPile.slice(-1)[0];
-    if(top){
-        discardDiv.innerHTML=`${top.value} ${top.suit}`;
-    }
+    document.getElementById("cardCount").innerText=gameState.hand.length;
 }
 
-/* ---------- SOCKET ---------- */
+/* ========== SOCKET ========== */
 
 socket.on("roomCreated",data=>{
     currentRoom=data.roomCode;
@@ -195,26 +282,12 @@ socket.on("roomCreated",data=>{
     show("waiting");
 });
 
-socket.on("roomJoined",data=>{
-    currentRoom=data.roomCode;
-    myId=socket.id;
-    document.getElementById("roomDisplay").innerText=currentRoom;
-    show("waiting");
-});
-
 socket.on("roomUpdate",room=>{
-    const div=document.getElementById("players");
+    const div=document.getElementById("waitingPlayers");
     div.innerHTML="";
     room.players.forEach(p=>{
         div.innerHTML+=`<div>${p.name}</div>`;
     });
-});
-
-socket.on("gameStarted",state=>{
-    gameState=state;
-    document.getElementById("gameRoom").innerText=currentRoom;
-    show("game");
-    render();
 });
 
 socket.on("gameState",state=>{
@@ -222,17 +295,26 @@ socket.on("gameState",state=>{
     render();
 });
 
+socket.on("timerStarted",()=>{
+    startTimer();
+});
+
 socket.on("roundWon",data=>{
-    alert(data.winner+" WON! "+data.reason);
+    alert("Winner: "+data.winner);
 });
 
 socket.on("wrongShow",data=>{
-    alert("Wrong Show: "+data.reason);
+    alert("Wrong Show by "+data.player);
+});
+
+socket.on("gameWon",data=>{
+    alert("Game Winner: "+data.winner);
 });
 
 socket.on("error",msg=>{
     alert(msg);
 });
+
 </script>
 
 </body>
