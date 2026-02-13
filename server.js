@@ -8,8 +8,6 @@ const server = http.createServer(app);
 const io = socketIO(server);
 
 app.use(express.static(__dirname));
-app.use(express.static(path.join(__dirname, "public")));
-
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
@@ -17,42 +15,38 @@ app.get('/', (req, res) => {
 const rooms = {};
 const turnTimers = {};
 
+/* ---------------- ROOM CODE ---------------- */
+
 function generateRoomCode() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
+/* ---------------- DECK ---------------- */
+
 function generateDeck() {
     const suits = ['♠', '♥', '♦', '♣'];
-    const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+    const values = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
     const deck = [];
-    
+
     for (let d = 0; d < 2; d++) {
         for (let suit of suits) {
             for (let value of values) {
-                deck.push({ 
-                    suit, 
+                deck.push({
+                    suit,
                     value,
-                    id: `${suit}_${value}_${Math.random().toString(36).substr(2, 9)}`
+                    id: `${suit}_${value}_${Math.random().toString(36).substr(2,9)}`
                 });
             }
         }
     }
-    
-    deck.push({ 
-        suit: '🃏', 
-        value: 'JOKER',
-        id: `joker_1_${Math.random().toString(36).substr(2, 9)}`
-    });
-    deck.push({ 
-        suit: '🃏', 
-        value: 'JOKER',
-        id: `joker_2_${Math.random().toString(36).substr(2, 9)}`
-    });
-    
-    return shuffleDeck(deck);
+
+    deck.push({ suit:'🃏', value:'JOKER', id:'joker1_'+Date.now() });
+    deck.push({ suit:'🃏', value:'JOKER', id:'joker2_'+Date.now() });
+
+    return shuffle(deck);
 }
 
-function shuffleDeck(deck) {
+function shuffle(deck) {
     for (let i = deck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -60,69 +54,21 @@ function shuffleDeck(deck) {
     return deck;
 }
 
-function getCardRank(card) {
-    const rankOrder = {
-        'A': 14, 'K': 13, 'Q': 12, 'J': 11, '10': 10,
-        '9': 9, '8': 8, '7': 7, '6': 6, '5': 5,
-        '4': 4, '3': 3, '2': 2, 'JOKER': 15
-    };
-    const suitOrder = { '♠': 4, '♥': 3, '♦': 2, '♣': 1, '🃏': 0 };
-    
-    return {
-        value: rankOrder[card.value] || 0,
-        suit: suitOrder[card.suit] || 0
-    };
-}
+/* ---------------- GAME INIT ---------------- */
 
-function arrangeSeating(players) {
-    const deck = generateDeck();
-    
-    // Each player picks a card
-    const picks = players.map(player => {
-        const card = deck.pop();
-        const rank = getCardRank(card);
-        return {
-            ...player,
-            pickedCard: card,
-            rank: rank.value * 10 + rank.suit
-        };
-    });
-    
-    // Sort by rank (highest first)
-    picks.sort((a, b) => b.rank - a.rank);
-    
-    // Highest card is dealer, second highest gets first turn in first round
-    const arranged = picks.map((p, idx) => ({
-        ...p,
-        isDealer: idx === 0,
-        turnOrder: idx
-    }));
-    
-    return {
-        players: arranged,
-        dealer: arranged[0].name,
-        firstPlayer: arranged[1] ? arranged[1].name : arranged[0].name
-    };
-}
-
-function initializeGame(players, roundNumber = 1) {
+function initializeGame(players) {
     const deck = generateDeck();
     const cutJoker = deck.pop();
     const discardPile = [deck.pop()];
-    
+
     const gamePlayers = players.map(p => ({
         id: p.id,
         name: p.name,
         hand: [],
-        cardCount: 13,
-        hasDrawn: false,
-        dropped: false,
-        dropPoints: 0,
+        hasDrawn:false,
+        dropped:false,
         totalScore: p.totalScore || 0,
-        eliminated: false,
-        consecutiveTimeouts: 0,
-        totalTimeouts: p.totalTimeouts || 0,
-        turnOrder: p.turnOrder !== undefined ? p.turnOrder : 0
+        eliminated:false
     }));
 
     gamePlayers.forEach(player => {
@@ -131,617 +77,268 @@ function initializeGame(players, roundNumber = 1) {
         }
     });
 
-    // Determine who goes first based on round number
-    const firstPlayerIndex = (roundNumber - 1) % gamePlayers.length;
-    const sortedPlayers = [...gamePlayers].sort((a, b) => a.turnOrder - b.turnOrder);
-    const firstPlayer = sortedPlayers[firstPlayerIndex];
-
     return {
         deck,
         discardPile,
         cutJoker,
         players: gamePlayers,
-        currentTurn: firstPlayer.id,
-        deckCount: deck.length,
-        isFirstRound: roundNumber === 1,
-        roundNumber: roundNumber
+        currentTurn: gamePlayers[0].id
     };
 }
 
-function getPublicGameState(gameState, playerId) {
-    const player = gameState.players.find(p => p.id === playerId);
-    const hasDrawnCard = player ? player.hasDrawn : false;
-    
-    return {
-        deck: [],
-        discardPile: gameState.discardPile,
-        cutJoker: gameState.cutJoker,
-        players: gameState.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            cardCount: p.hand.length,
-            dropped: p.dropped,
-            eliminated: p.eliminated,
-            dropPoints: p.dropPoints,
-            totalScore: p.totalScore,
-            totalTimeouts: p.totalTimeouts || 0,
-            hand: p.id === playerId ? p.hand : []
-        })),
-        currentTurn: gameState.currentTurn,
-        deckCount: gameState.deck.length,
-        hand: gameState.players.find(p => p.id === playerId)?.hand || [],
-        hasDrawn: hasDrawnCard,
-        roundNumber: gameState.roundNumber || 1
-    };
-}
+/* ---------------- INDIAN RUMMY VALIDATION ---------------- */
 
 function validateDeclaration(groups, ungrouped, cutJoker) {
-    if (ungrouped.length > 1) {
-        return { valid: false, reason: 'More than 1 ungrouped card' };
-    }
-    
-    let pureSequenceFound = false;
-    let totalSequences = 0;
-    
+
+    if (!groups || groups.length < 2)
+        return { valid:false, reason:'Need minimum 2 sequences' };
+
+    if (ungrouped.length > 1)
+        return { valid:false, reason:'Only 1 ungrouped card allowed' };
+
+    let pureSeq = 0;
+    let totalSeq = 0;
+
     for (let group of groups) {
-        if (group.length < 3) {
-            return { valid: false, reason: 'Groups need 3+ cards' };
-        }
-        
-        const validation = validateGroup(group, cutJoker);
-        if (!validation.valid) {
-            return { valid: false, reason: validation.reason || 'Invalid group' };
-        }
-        
-        if (validation.type === 'sequence') {
-            totalSequences++;
-            if (validation.pure) {
-                pureSequenceFound = true;
-            }
+
+        const result = validateGroup(group, cutJoker);
+        if (!result.valid)
+            return { valid:false, reason:result.reason };
+
+        if (result.type === 'sequence') {
+            totalSeq++;
+            if (result.pure) pureSeq++;
         }
     }
-    
-    if (!pureSequenceFound) {
-        return { valid: false, reason: 'No pure sequence' };
-    }
-    
-    if (totalSequences < 2) {
-        return { valid: false, reason: 'Need 2+ sequences' };
-    }
-    
-    return { valid: true };
+
+    if (pureSeq < 1)
+        return { valid:false, reason:'Need at least 1 pure sequence' };
+
+    if (totalSeq < 2)
+        return { valid:false, reason:'Need 2 sequences' };
+
+    return { valid:true };
 }
 
 function validateGroup(cards, cutJoker) {
-    if (cards.length < 3) {
-        return { valid: false };
-    }
-    
-    const isSet = checkIfSet(cards, cutJoker);
-    const isSequence = checkIfSequence(cards, cutJoker);
-    
-    if (isSet.valid) return { valid: true, type: 'set', pure: isSet.pure };
-    if (isSequence.valid) return { valid: true, type: 'sequence', pure: isSequence.pure };
-    
-    return { valid: false };
+    if (cards.length < 3)
+        return { valid:false, reason:'Minimum 3 cards' };
+
+    const setCheck = checkSet(cards, cutJoker);
+    if (setCheck.valid)
+        return { valid:true, type:'set', pure:setCheck.pure };
+
+    const seqCheck = checkSequence(cards, cutJoker);
+    if (seqCheck.valid)
+        return { valid:true, type:'sequence', pure:seqCheck.pure };
+
+    return { valid:false, reason:'Invalid group' };
 }
 
-function checkIfSet(cards, cutJoker) {
+function checkSet(cards, cutJoker) {
+
+    const wild = getWildValue(cutJoker);
     let hasJoker = false;
-    const nonJokerCards = cards.filter(c => {
-        const isJoker = c.value === 'JOKER' || (c.value === getWildCardValue(cutJoker) && c.suit !== cutJoker.suit);
-        if (isJoker) hasJoker = true;
-        return !isJoker;
+
+    const normal = cards.filter(c => {
+        const joker = c.value === 'JOKER' || c.value === wild;
+        if (joker) hasJoker = true;
+        return !joker;
     });
-    
-    if (nonJokerCards.length === 0) return { valid: false };
-    
-    const baseValue = nonJokerCards[0].value;
-    if (!nonJokerCards.every(c => c.value === baseValue)) return { valid: false };
-    
-    const suits = new Set(nonJokerCards.map(c => c.suit));
-    if (suits.size !== nonJokerCards.length) return { valid: false };
-    
-    return { valid: true, pure: !hasJoker };
+
+    if (normal.length === 0) return { valid:false };
+
+    const val = normal[0].value;
+    if (!normal.every(c => c.value === val))
+        return { valid:false };
+
+    const suits = new Set(normal.map(c => c.suit));
+    if (suits.size !== normal.length)
+        return { valid:false };
+
+    return { valid:true, pure:!hasJoker };
 }
 
-function checkIfSequence(cards, cutJoker) {
-    if (cards.length < 3) return { valid: false };
-    
+function checkSequence(cards, cutJoker) {
+
+    const order = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+    const wild = getWildValue(cutJoker);
+
     let hasJoker = false;
-    const nonJokerCards = cards.filter(c => {
-        const isJoker = c.value === 'JOKER' || (c.value === getWildCardValue(cutJoker) && c.suit !== cutJoker.suit);
-        if (isJoker) hasJoker = true;
-        return !isJoker;
+
+    const normal = cards.filter(c => {
+        const joker = c.value === 'JOKER' || c.value === wild;
+        if (joker) hasJoker = true;
+        return !joker;
     });
-    
-    if (nonJokerCards.length === 0) return { valid: false };
-    
-    const baseSuit = nonJokerCards[0].suit;
-    if (!nonJokerCards.every(c => c.suit === baseSuit)) return { valid: false };
-    
-    const valueOrder = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-    const sortedCards = [...nonJokerCards].sort((a, b) => 
-        valueOrder.indexOf(a.value) - valueOrder.indexOf(b.value)
+
+    if (normal.length === 0) return { valid:false };
+
+    const suit = normal[0].suit;
+    if (!normal.every(c => c.suit === suit))
+        return { valid:false };
+
+    const sorted = normal.sort(
+        (a,b)=> order.indexOf(a.value)-order.indexOf(b.value)
     );
-    
-    let jokerCount = cards.length - nonJokerCards.length;
-    
-    for (let i = 0; i < sortedCards.length - 1; i++) {
-        const gap = valueOrder.indexOf(sortedCards[i + 1].value) - 
-                    valueOrder.indexOf(sortedCards[i].value) - 1;
-        if (gap > jokerCount) return { valid: false };
+
+    let jokerCount = cards.length - normal.length;
+
+    for (let i = 0; i < sorted.length-1; i++) {
+        const gap =
+            order.indexOf(sorted[i+1].value) -
+            order.indexOf(sorted[i].value) - 1;
+
+        if (gap > jokerCount)
+            return { valid:false };
+
         jokerCount -= gap;
     }
-    
-    return { valid: true, pure: !hasJoker };
+
+    return { valid:true, pure:!hasJoker };
 }
 
-function getWildCardValue(cutJoker) {
-    const valueOrder = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-    const index = valueOrder.indexOf(cutJoker.value);
-    return valueOrder[(index + 1) % valueOrder.length];
+function getWildValue(cutJoker) {
+    const order = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+    const index = order.indexOf(cutJoker.value);
+    return order[(index+1)%order.length];
 }
 
-function moveToNextPlayer(room) {
-    const game = room.gameState;
-    const activePlayers = game.players.filter(p => !p.dropped && !p.eliminated);
-    
-    if (activePlayers.length === 0) return;
-    
-    const currentIndex = activePlayers.findIndex(p => p.id === game.currentTurn);
-    const nextIndex = (currentIndex + 1) % activePlayers.length;
-    game.currentTurn = activePlayers[nextIndex].id;
-    
-    const nextPlayer = game.players.find(p => p.id === game.currentTurn);
-    if (nextPlayer) nextPlayer.hasDrawn = false;
-    
-    startTurnTimer(room.code, game.currentTurn);
-}
+/* ---------------- SOCKET EVENTS ---------------- */
 
-function startTurnTimer(roomCode, playerId) {
-    // Clear existing timer
-    if (turnTimers[roomCode]) {
-        clearTimeout(turnTimers[roomCode]);
-        delete turnTimers[roomCode];
-    }
-    
-    // Notify player
-    io.to(playerId).emit('timerStarted', { playerId, duration: 45 });
-    
-    // Start new timer
-    turnTimers[roomCode] = setTimeout(() => {
-        handleTimeout(roomCode, playerId);
-    }, 45000);
-}
+io.on('connection', socket => {
 
-function stopTurnTimer(roomCode, playerId) {
-    if (turnTimers[roomCode]) {
-        clearTimeout(turnTimers[roomCode]);
-        delete turnTimers[roomCode];
-    }
-    
-    if (playerId) {
-        io.to(playerId).emit('timerStopped', { playerId });
-    }
-}
-
-function handleTimeout(roomCode, playerId) {
-    const room = rooms[roomCode];
-    if (!room || !room.gameState) return;
-    
-    const game = room.gameState;
-    const player = game.players.find(p => p.id === playerId);
-    
-    if (!player || player.dropped || player.eliminated) return;
-    
-    player.consecutiveTimeouts = (player.consecutiveTimeouts || 0) + 1;
-    player.totalTimeouts = (player.totalTimeouts || 0) + 1;
-    
-    if (player.consecutiveTimeouts >= 2) {
-        player.dropped = true;
-        player.dropPoints = game.isFirstRound ? 25 : 50;
-        player.totalScore += player.dropPoints;
-        player.hand = [];
-        
-        io.to(roomCode).emit('playerAutoDropped', { 
-            playerName: player.name, 
-            points: player.dropPoints 
-        });
-        
-        if (player.totalScore >= 250) {
-            player.eliminated = true;
-            io.to(roomCode).emit('playerEliminated', { 
-                playerName: player.name, 
-                reason: 'Reached 250 points' 
-            });
-        }
-        
-        checkRoundEnd(roomCode);
-    } else {
-        autoPlay(game, player);
-        io.to(roomCode).emit('autoPlayExecuted', { playerName: player.name });
-    }
-    
-    moveToNextPlayer(room);
-    room.players.forEach(p => {
-        io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-    });
-}
-
-function autoPlay(game, player) {
-    if (!player.hasDrawn && game.deck.length > 0) {
-        player.hand.push(game.deck.pop());
-        player.hasDrawn = true;
-    }
-    
-    if (player.hasDrawn && player.hand.length > 0) {
-        game.discardPile.push(player.hand.pop());
-        player.hasDrawn = false;
-    }
-}
-
-function checkRoundEnd(roomCode) {
-    const room = rooms[roomCode];
-    if (!room || !room.gameState) return false;
-    
-    const game = room.gameState;
-    const activeInRound = game.players.filter(p => !p.dropped && !p.eliminated);
-    
-    // If only 1 player left active in round, they win
-    if (activeInRound.length === 1) {
-        stopTurnTimer(roomCode);
-        
-        io.to(roomCode).emit('roundWon', { 
-            winner: activeInRound[0].name, 
-            reason: 'All others dropped/eliminated' 
-        });
-        
-        setTimeout(() => startNewRound(roomCode), 3000);
-        return true;
-    }
-    
-    // If 0 players active (shouldn't happen, but handle it)
-    if (activeInRound.length === 0) {
-        stopTurnTimer(roomCode);
-        setTimeout(() => startNewRound(roomCode), 3000);
-        return true;
-    }
-    
-    return false;
-}
-
-function startNewRound(roomCode) {
-    const room = rooms[roomCode];
-    if (!room) return;
-    
-    // Get players under 250 points
-    const eligiblePlayers = room.gameState.players.filter(p => 
-        p.totalScore < 250 && !p.eliminated
-    );
-    
-    // End game if 1 or 0 players remain (need at least 2 to play)
-    if (eligiblePlayers.length <= 1) {
-        const winner = eligiblePlayers[0];
-        io.to(roomCode).emit('gameWon', { 
-            winner: winner ? winner.name : 'No one', 
-            reason: eligiblePlayers.length === 1 ? 'Last player standing!' : 'All players eliminated!'
-        });
-        
-        setTimeout(() => {
-            if (rooms[roomCode]) {
-                rooms[roomCode].started = false;
-                rooms[roomCode].gameState = null;
-                stopTurnTimer(roomCode);
-            }
-        }, 3000);
-        return;
-    }
-    
-    const roundNumber = (room.gameState.roundNumber || 1) + 1;
-    
-    // Preserve player data
-    const playersWithData = eligiblePlayers.map(p => ({
-        id: p.id,
-        name: p.name,
-        totalScore: p.totalScore,
-        totalTimeouts: p.totalTimeouts || 0,
-        turnOrder: p.turnOrder
-    }));
-    
-    // Initialize new round
-    const newGame = initializeGame(playersWithData, roundNumber);
-    room.gameState = newGame;
-    
-    // Get dealer and first player info
-    const sortedPlayers = [...newGame.players].sort((a, b) => a.turnOrder - b.turnOrder);
-    const dealerIndex = (roundNumber - 1) % sortedPlayers.length;
-    const firstPlayerIndex = (roundNumber) % sortedPlayers.length;
-    
-    const dealer = sortedPlayers[dealerIndex].name;
-    const firstPlayer = sortedPlayers[firstPlayerIndex].name;
-    
-    io.to(roomCode).emit('newRoundStarted', { 
-        dealer: dealer, 
-        firstPlayer: firstPlayer 
-    });
-    
-    eligiblePlayers.forEach(p => {
-        io.to(p.id).emit('gameState', getPublicGameState(newGame, p.id));
-    });
-    
-    startTurnTimer(roomCode, newGame.currentTurn);
-}
-
-io.on('connection', (socket) => {
-    console.log('Connected:', socket.id);
-
-    socket.on('createRoom', (data) => {
-        const roomCode = generateRoomCode();
-        rooms[roomCode] = {
-            code: roomCode,
+    socket.on('createRoom', data => {
+        const code = generateRoomCode();
+        rooms[code] = {
+            code,
             host: socket.id,
-            players: [{ id: socket.id, name: data.playerName }],
-            started: false,
-            gameState: null
+            players: [{ id:socket.id, name:data.playerName }],
+            gameState:null
         };
-        socket.join(roomCode);
-        socket.emit('roomCreated', { roomCode, room: rooms[roomCode] });
+        socket.join(code);
+        socket.emit('roomCreated',{ roomCode:code, room:rooms[code] });
     });
 
-    socket.on('joinRoom', (data) => {
+    socket.on('joinRoom', data => {
         const room = rooms[data.roomCode];
-        if (!room) return socket.emit('error', 'Room not found!');
-        if (room.started) return socket.emit('error', 'Game already started!');
-        if (room.players.length >= 4) return socket.emit('error', 'Room is full!');
-        
-        room.players.push({ id: socket.id, name: data.playerName });
+        if (!room) return socket.emit('error','Room not found');
+
+        room.players.push({ id:socket.id, name:data.playerName });
         socket.join(data.roomCode);
-        socket.emit('roomJoined', { roomCode: data.roomCode, room });
-        io.to(data.roomCode).emit('roomUpdate', room);
+        socket.emit('roomJoined',{ roomCode:data.roomCode, room });
+        io.to(data.roomCode).emit('roomUpdate',room);
     });
 
-    socket.on('startGame', (data) => {
+    socket.on('startGame', data => {
         const room = rooms[data.roomCode];
-        if (!room || room.host !== socket.id) {
-            return socket.emit('error', 'Only host can start!');
-        }
-        if (room.players.length < 2) {
-            return socket.emit('error', 'Need at least 2 players!');
-        }
-        
-        room.started = true;
-        
-        // Arrange seating based on card cutting
-        const seatingInfo = arrangeSeating(room.players);
-        
-        // Notify all players of seating arrangement
-        io.to(data.roomCode).emit('seatingArranged', seatingInfo);
-        
-        // Wait 5 seconds then start game
-        setTimeout(() => {
-            room.gameState = initializeGame(seatingInfo.players, 1);
-            
-            room.players.forEach(p => {
-                io.to(p.id).emit('gameStarted', getPublicGameState(room.gameState, p.id));
-            });
-            
-            startTurnTimer(data.roomCode, room.gameState.currentTurn);
-        }, 5000);
+        room.gameState = initializeGame(room.players);
+
+        room.players.forEach(p=>{
+            io.to(p.id).emit('gameStarted',
+                getPublic(room.gameState,p.id));
+        });
     });
 
-    socket.on('drawCard', (data) => {
+    socket.on('drawCard', data=>{
         const room = rooms[data.roomCode];
-        if (!room?.gameState) return;
-        
         const game = room.gameState;
-        const player = game.players.find(p => p.id === socket.id);
-        
-        if (!player || game.currentTurn !== socket.id || player.hasDrawn) return;
-        
-        player.consecutiveTimeouts = 0;
-        
-        const card = data.source === 'deck' ? game.deck.pop() : game.discardPile.pop();
-        if (!card) return socket.emit('error', 'Empty!');
-        
+        const player = game.players.find(p=>p.id===socket.id);
+
+        if (!player || game.currentTurn!==socket.id || player.hasDrawn)
+            return;
+
+        const card = data.source==='deck'
+            ? game.deck.pop()
+            : game.discardPile.pop();
+
         player.hand.push(card);
-        player.hasDrawn = true;
-        
-        room.players.forEach(p => {
-            io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-        });
+        player.hasDrawn=true;
+
+        updateAll(room);
     });
 
-    socket.on('discardCard', (data) => {
+    /* -------- FIXED DISCARD (BY CARD ID) -------- */
+
+    socket.on('discardCard', data=>{
         const room = rooms[data.roomCode];
-        if (!room?.gameState) return;
-        
         const game = room.gameState;
-        const player = game.players.find(p => p.id === socket.id);
-        
-        if (!player || game.currentTurn !== socket.id || !player.hasDrawn) return;
-        if (data.cardIndex < 0 || data.cardIndex >= player.hand.length) return;
-        
-        game.discardPile.push(player.hand.splice(data.cardIndex, 1)[0]);
-        player.hasDrawn = false;
-        
-        // Stop timer after discard
-        stopTurnTimer(data.roomCode, socket.id);
-        
-        moveToNextPlayer(room);
-        
-        room.players.forEach(p => {
-            io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-        });
+        const player = game.players.find(p=>p.id===socket.id);
+
+        if (!player || !player.hasDrawn)
+            return;
+
+        const index = player.hand.findIndex(c=>c.id===data.cardId);
+        if (index===-1) return;
+
+        game.discardPile.push(player.hand.splice(index,1)[0]);
+        player.hasDrawn=false;
+
+        nextTurn(game);
+        updateAll(room);
     });
 
-    socket.on('declareWin', (data) => {
+    socket.on('declareWin', data=>{
         const room = rooms[data.roomCode];
-        if (!room?.gameState) return;
-        
         const game = room.gameState;
-        const player = game.players.find(p => p.id === socket.id);
-        
-        if (!player || !player.hasDrawn) return;
-        
-        const validation = validateDeclaration(data.groups, data.ungrouped, game.cutJoker);
-        
-        if (validation.valid) {
-            player.hand = [];
-            stopTurnTimer(data.roomCode, socket.id);
-            
-            io.to(data.roomCode).emit('roundWon', { 
-                winner: player.name, 
-                reason: 'Valid declaration!' 
+        const player = game.players.find(p=>p.id===socket.id);
+
+        const result = validateDeclaration(
+            data.groups,
+            data.ungrouped,
+            game.cutJoker
+        );
+
+        if (result.valid) {
+            io.to(data.roomCode).emit('roundWon',{
+                winner:player.name,
+                reason:'Valid Show!'
             });
-            
-            // Add points to other players
-            game.players.forEach(p => {
-                if (p.id !== socket.id && !p.dropped && !p.eliminated) {
-                    p.totalScore += 80;
-                }
-                
-                if (p.totalScore >= 250 && !p.eliminated) {
-                    p.eliminated = true;
-                    io.to(data.roomCode).emit('playerEliminated', { 
-                        playerName: p.name, 
-                        reason: 'Reached 250 points' 
-                    });
-                }
-            });
-            
-            setTimeout(() => startNewRound(data.roomCode), 3000);
         } else {
             player.totalScore += 80;
-            player.eliminated = true;
-            player.hand = [];
-            
-            stopTurnTimer(data.roomCode, socket.id);
-            
-            io.to(data.roomCode).emit('wrongShow', { 
-                player: player.name, 
-                reason: validation.reason, 
-                points: 80 
+            io.to(data.roomCode).emit('wrongShow',{
+                player:player.name,
+                reason:result.reason
             });
-            
-            io.to(data.roomCode).emit('playerEliminated', { 
-                playerName: player.name, 
-                reason: 'Wrong show' 
-            });
-            
-            const active = game.players.filter(p => !p.eliminated && p.totalScore < 250);
-            
-            if (active.length <= 1) {
-                io.to(data.roomCode).emit('gameWon', { 
-                    winner: active[0]?.name || 'No one', 
-                    reason: 'Last player standing!' 
-                });
-                
-                setTimeout(() => {
-                    if (rooms[data.roomCode]) {
-                        rooms[data.roomCode].started = false;
-                        rooms[data.roomCode].gameState = null;
-                        stopTurnTimer(data.roomCode);
-                    }
-                }, 3000);
-            } else {
-                setTimeout(() => startNewRound(data.roomCode), 3000);
-            }
         }
-        
-        room.players.forEach(p => {
-            io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-        });
+
+        updateAll(room);
     });
 
-    socket.on('playerDrop', (data) => {
-        const room = rooms[data.roomCode];
-        if (!room?.gameState) return;
-        
-        const game = room.gameState;
-        const player = game.players.find(p => p.id === socket.id);
-        
-        if (!player || player.dropped || player.eliminated || player.hasDrawn) return;
-        
-        // Stop timer if it's their turn
-        if (game.currentTurn === socket.id) {
-            stopTurnTimer(data.roomCode, socket.id);
-        }
-        
-        const points = game.isFirstRound ? 25 : 50;
-        player.dropped = true;
-        player.dropPoints = points;
-        player.totalScore += points;
-        player.hand = [];
-        
-        io.to(data.roomCode).emit('playerDropped', { 
-            playerName: player.name, 
-            points,
-            dropType: game.isFirstRound ? 'First Drop' : 'Middle Drop'
-        });
-        
-        if (player.totalScore >= 250) {
-            player.eliminated = true;
-            io.to(data.roomCode).emit('playerEliminated', { 
-                playerName: player.name, 
-                reason: 'Reached 250 points' 
-            });
-        }
-        
-        // Check if round should end
-        if (checkRoundEnd(data.roomCode)) {
-            return;
-        }
-        
-        // Check if game should end
-        const under250 = game.players.filter(p => p.totalScore < 250 && !p.eliminated);
-        if (under250.length <= 1) {
-            io.to(data.roomCode).emit('gameWon', { 
-                winner: under250[0]?.name || 'No one', 
-                reason: 'Last player under 250!' 
-            });
-            
-            setTimeout(() => {
-                if (rooms[data.roomCode]) {
-                    rooms[data.roomCode].started = false;
-                    rooms[data.roomCode].gameState = null;
-                    stopTurnTimer(data.roomCode);
-                }
-            }, 3000);
-            return;
-        }
-        
-        // Move to next player if it was this player's turn
-        if (game.currentTurn === socket.id) {
-            moveToNextPlayer(room);
-        }
-        
-        room.players.forEach(p => {
-            io.to(p.id).emit('gameState', getPublicGameState(game, p.id));
-        });
-    });
-
-    socket.on('disconnect', () => {
-        for (let code in rooms) {
-            const room = rooms[code];
-            const idx = room.players.findIndex(p => p.id === socket.id);
-            
-            if (idx !== -1) {
-                room.players.splice(idx, 1);
-                
-                if (room.players.length === 0) {
-                    stopTurnTimer(code);
-                    delete rooms[code];
-                } else {
-                    if (room.host === socket.id) {
-                        room.host = room.players[0].id;
-                    }
-                    io.to(code).emit('roomUpdate', room);
-                }
-            }
-        }
-    });
 });
 
+/* ---------------- HELPERS ---------------- */
+
+function getPublic(game,id){
+    return {
+        discardPile:game.discardPile,
+        cutJoker:game.cutJoker,
+        players:game.players.map(p=>({
+            id:p.id,
+            name:p.name,
+            cardCount:p.hand.length,
+            totalScore:p.totalScore
+        })),
+        currentTurn:game.currentTurn,
+        hand:game.players.find(p=>p.id===id).hand,
+        hasDrawn:game.players.find(p=>p.id===id).hasDrawn
+    };
+}
+
+function updateAll(room){
+    room.players.forEach(p=>{
+        io.to(p.id).emit('gameState',
+            getPublic(room.gameState,p.id));
+    });
+}
+
+function nextTurn(game){
+    const idx = game.players.findIndex(p=>p.id===game.currentTurn);
+    const next = (idx+1)%game.players.length;
+    game.currentTurn = game.players[next].id;
+}
+
+/* ---------------- START ---------------- */
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🎴 Server running on port ${PORT}`));
+server.listen(PORT, ()=> console.log("Server running"));
