@@ -3,28 +3,103 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>6 Player Indian Rummy</title>
+<title>Casino Style Indian Rummy</title>
 
 <style>
-body {
+body{
     margin:0;
-    font-family: Arial;
-    background:#1e3c72;
-    color:white;
+    font-family:Arial, Helvetica, sans-serif;
+    background:#0b3d0b;
     overflow:hidden;
+    color:white;
 }
-.screen { display:none; padding:20px; }
-.active { display:block; }
 
-button {
+/* ---------- SCREENS ---------- */
+
+.screen{display:none;padding:20px}
+.active{display:block}
+
+/* ---------- LOBBY ---------- */
+
+input{
+    padding:8px;
+    margin:5px;
+    border-radius:6px;
+    border:none;
+}
+button{
     padding:8px 14px;
     margin:5px;
-    border:none;
     border-radius:6px;
+    border:none;
     cursor:pointer;
+    background:#ffd700;
+    font-weight:bold;
+}
+button:hover{opacity:0.8}
+
+/* ---------- CASINO TABLE ---------- */
+
+#table{
+    position:relative;
+    width:100vw;
+    height:100vh;
+    background:radial-gradient(circle at center,#145214,#0b3d0b 70%);
 }
 
-.card {
+.player{
+    position:absolute;
+    width:140px;
+    padding:6px;
+    background:rgba(0,0,0,0.6);
+    border-radius:10px;
+    text-align:center;
+    font-size:13px;
+}
+.current-turn{
+    border:2px solid gold;
+}
+
+/* 6 PLAYER POSITIONS */
+
+.p1{bottom:10px;left:50%;transform:translateX(-50%)}
+.p2{top:10px;left:50%;transform:translateX(-50%)}
+.p3{left:10px;top:50%;transform:translateY(-50%)}
+.p4{right:10px;top:50%;transform:translateY(-50%)}
+.p5{top:20%;left:20%}
+.p6{top:20%;right:20%}
+
+/* ---------- CENTER ---------- */
+
+#center{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    text-align:center;
+}
+
+#discard{
+    font-size:22px;
+    margin:10px;
+}
+
+/* ---------- HAND ---------- */
+
+#hand{
+    position:absolute;
+    bottom:0;
+    width:100%;
+    background:rgba(0,0,0,0.7);
+    padding:10px;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    max-height:200px;
+    overflow-y:auto;
+}
+
+.card{
     width:50px;
     height:70px;
     background:white;
@@ -35,40 +110,22 @@ button {
     justify-content:center;
     align-items:center;
     margin:4px;
-    cursor:pointer;
     color:black;
     font-weight:bold;
+    cursor:pointer;
 }
-.card.red { color:red; }
-.card.selected {
+.card.red{color:red}
+.card.selected{
     border:3px solid gold;
     transform:translateY(-6px);
 }
 
-#hand {
-    display:flex;
-    flex-wrap:wrap;
-    max-height:200px;
-    overflow-y:auto;
-}
+/* ---------- TIMER ---------- */
 
-.player-box {
-    background:rgba(255,255,255,0.15);
-    padding:8px;
-    border-radius:8px;
-    margin:4px;
-    font-size:14px;
-}
-.current-turn {
-    border:2px solid gold;
-}
-
-#playersArea {
-    display:flex;
-    flex-wrap:wrap;
-}
-
-#timer {
+#timer{
+    position:absolute;
+    top:10px;
+    right:20px;
     font-size:20px;
     font-weight:bold;
     color:yellow;
@@ -80,9 +137,10 @@ button {
 
 <!-- LOBBY -->
 <div id="lobby" class="screen active">
-    <h2>🎴 Indian Rummy (6 Players)</h2>
-    <input id="name" placeholder="Your Name"><br>
+    <h2>🎰 Casino Indian Rummy</h2>
+    <input id="name" placeholder="Your Name">
     <button onclick="createRoom()">Create Room</button>
+    <br>
     <input id="roomCode" placeholder="Room Code">
     <button onclick="joinRoom()">Join Room</button>
 </div>
@@ -96,24 +154,27 @@ button {
 
 <!-- GAME -->
 <div id="game" class="screen">
-    <h3>Room: <span id="gameRoom"></span></h3>
-    <div id="timer"></div>
+<div id="table">
 
-    <div id="playersArea"></div>
+<div id="timer"></div>
 
-    <h4>Discard Pile</h4>
-    <div id="discardPile"></div>
+<!-- PLAYERS -->
+<div id="playersArea"></div>
 
-    <h4>Your Cards (<span id="cardCount"></span>)</h4>
-    <div id="hand"></div>
+<!-- CENTER -->
+<div id="center">
+    <div id="discard"></div>
+    <button onclick="drawCard('deck')">Draw Deck</button>
+    <button onclick="drawCard('discard')">Draw Discard</button>
+    <button onclick="discardSelected()">Discard</button>
+    <button onclick="createGroup()">Group</button>
+    <button onclick="declareShow()">Show</button>
+</div>
 
-    <div>
-        <button onclick="drawCard('deck')">Draw Deck</button>
-        <button onclick="drawCard('discard')">Draw Discard</button>
-        <button onclick="discardSelected()">Discard</button>
-        <button onclick="createGroup()">Group</button>
-        <button onclick="declareShow()">Show</button>
-    </div>
+<!-- HAND -->
+<div id="hand"></div>
+
+</div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -128,14 +189,14 @@ let groups=[];
 let timerInterval=null;
 let timeLeft=45;
 
-/* ========== UI ========== */
+/* ----------- UI ----------- */
 
 function show(id){
     document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
     document.getElementById(id).classList.add("active");
 }
 
-/* ========== ROOM ========== */
+/* ----------- ROOM ----------- */
 
 function createRoom(){
     const name=document.getElementById("name").value;
@@ -152,7 +213,7 @@ function startGame(){
     socket.emit("startGame",{roomCode:currentRoom});
 }
 
-/* ========== TIMER ========== */
+/* ----------- TIMER ----------- */
 
 function startTimer(){
     clearInterval(timerInterval);
@@ -161,13 +222,11 @@ function startTimer(){
     timerInterval=setInterval(()=>{
         timeLeft--;
         document.getElementById("timer").innerText="Time: "+timeLeft;
-        if(timeLeft<=0){
-            clearInterval(timerInterval);
-        }
+        if(timeLeft<=0) clearInterval(timerInterval);
     },1000);
 }
 
-/* ========== GAME ACTIONS ========== */
+/* ----------- GAME ACTIONS ----------- */
 
 function drawCard(source){
     socket.emit("drawCard",{roomCode:currentRoom,source});
@@ -175,7 +234,7 @@ function drawCard(source){
 
 function discardSelected(){
     if(selected.length!==1){
-        alert("Select exactly 1 card");
+        alert("Select 1 card");
         return;
     }
     socket.emit("discardCard",{
@@ -187,7 +246,7 @@ function discardSelected(){
 
 function createGroup(){
     if(selected.length<3){
-        alert("Select minimum 3 cards");
+        alert("Minimum 3 cards");
         return;
     }
     groups.push([...selected]);
@@ -203,8 +262,8 @@ function declareShow(){
         );
     });
 
-    const groupedIds = groups.flat();
-    const ungrouped = gameState.hand.filter(
+    const groupedIds=groups.flat();
+    const ungrouped=gameState.hand.filter(
         c=>!groupedIds.includes(c.id)
     );
 
@@ -215,7 +274,7 @@ function declareShow(){
     });
 }
 
-/* ========== RENDER ========== */
+/* ----------- RENDER ----------- */
 
 function render(){
 
@@ -224,9 +283,10 @@ function render(){
     /* Players */
     const area=document.getElementById("playersArea");
     area.innerHTML="";
-    gameState.players.forEach(p=>{
+
+    gameState.players.forEach((p,i)=>{
         const div=document.createElement("div");
-        div.className="player-box";
+        div.className="player p"+(i+1);
         if(p.id===gameState.currentTurn)
             div.classList.add("current-turn");
 
@@ -239,7 +299,7 @@ function render(){
     });
 
     /* Discard */
-    const discard=document.getElementById("discardPile");
+    const discard=document.getElementById("discard");
     discard.innerHTML="";
     const top=gameState.discardPile.slice(-1)[0];
     if(top){
@@ -258,7 +318,6 @@ function render(){
             div.classList.add("selected");
 
         div.innerHTML=`${card.value}<br>${card.suit}`;
-
         div.onclick=()=>{
             if(selected.includes(card.id))
                 selected=selected.filter(id=>id!==card.id);
@@ -266,14 +325,11 @@ function render(){
                 selected.push(card.id);
             render();
         };
-
         hand.appendChild(div);
     });
-
-    document.getElementById("cardCount").innerText=gameState.hand.length;
 }
 
-/* ========== SOCKET ========== */
+/* ----------- SOCKET ----------- */
 
 socket.on("roomCreated",data=>{
     currentRoom=data.roomCode;
@@ -295,25 +351,12 @@ socket.on("gameState",state=>{
     render();
 });
 
-socket.on("timerStarted",()=>{
-    startTimer();
-});
+socket.on("timerStarted",()=>startTimer());
 
-socket.on("roundWon",data=>{
-    alert("Winner: "+data.winner);
-});
-
-socket.on("wrongShow",data=>{
-    alert("Wrong Show by "+data.player);
-});
-
-socket.on("gameWon",data=>{
-    alert("Game Winner: "+data.winner);
-});
-
-socket.on("error",msg=>{
-    alert(msg);
-});
+socket.on("roundWon",data=>alert("Winner: "+data.winner));
+socket.on("wrongShow",data=>alert("Wrong Show by "+data.player));
+socket.on("gameWon",data=>alert("Game Winner: "+data.winner));
+socket.on("error",msg=>alert(msg));
 
 </script>
 
