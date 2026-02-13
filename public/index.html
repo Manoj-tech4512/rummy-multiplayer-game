@@ -1,1665 +1,239 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Rummy Game</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        html, body {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            position: fixed;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-        }
-
-        .container {
-            width: 100%;
-            height: 100vh;
-            height: 100dvh;
-            padding: 3px;
-        }
-
-        .screen {
-            display: none;
-            width: 100%;
-            height: 100%;
-        }
-
-        .screen.active {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .lobby-container {
-            background: white;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-            max-width: 400px;
-            margin: 20px auto;
-        }
-
-        h1 {
-            color: #1e3c72;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 1.8em;
-        }
-
-        h2 {
-            color: #1e3c72;
-            margin-bottom: 15px;
-            text-align: center;
-            font-size: 1.4em;
-        }
-
-        input {
-            width: 100%;
-            padding: 10px;
-            margin: 8px 0;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-
-        button {
-            padding: 10px 20px;
-            margin: 5px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-weight: 600;
-            touch-action: manipulation;
-        }
-
-        .btn-primary {
-            background: #1e3c72;
-            color: white;
-        }
-
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-
-        .btn-warning {
-            background: #ffc107;
-            color: #333;
-        }
-
-        button:active {
-            transform: scale(0.95);
-        }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .game-container {
-            background: rgba(255,255,255,0.95);
-            border-radius: 10px;
-            padding: 5px;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .game-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 5px 8px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            margin-bottom: 3px;
-            flex-shrink: 0;
-        }
-
-        .game-header h2 {
-            font-size: 0.85em;
-            margin: 0;
-        }
-
-        .score-icon {
-            background: #1e3c72;
-            color: white;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        .timer-display {
-            background: #1e3c72;
-            color: white;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 0.9em;
-            min-width: 45px;
-            text-align: center;
-        }
-
-        .timer-display.warning {
-            background: #ff6b6b;
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-        }
-
-        .game-table {
-            background: linear-gradient(135deg, #1a5f1a 0%, #2d5016 100%);
-            border-radius: 12px;
-            padding: 4px;
-            flex: 1;
-            position: relative;
-            border: 4px solid #b8860b;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .players-container {
-            position: relative;
-            height: 65px;
-            margin-bottom: 3px;
-            flex-shrink: 0;
-        }
-
-        .player-avatar {
-            position: absolute;
-            text-align: center;
-            background: rgba(255,255,255,0.9);
-            padding: 6px;
-            border-radius: 8px;
-            min-width: 85px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            font-size: 0.75em;
-        }
-
-        .player-avatar.current-turn {
-            border: 2px solid #ffd700;
-            box-shadow: 0 0 12px rgba(255,215,0,0.8);
-        }
-
-        .player-avatar.dropped {
-            opacity: 0.5;
-            background: rgba(255,0,0,0.2);
-        }
-
-        .player-avatar.top {
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        .player-avatar.left {
-            top: 50%;
-            left: 0;
-            transform: translateY(-50%);
-        }
-
-        .player-avatar.right {
-            top: 50%;
-            right: 0;
-            transform: translateY(-50%);
-        }
-
-        .player-name {
-            font-weight: bold;
-            font-size: 0.95em;
-        }
-
-        .player-score {
-            font-size: 0.7em;
-            color: #666;
-            background: #f0f0f0;
-            padding: 2px 5px;
-            border-radius: 3px;
-            margin-top: 2px;
-        }
-
-        .center-area {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 4px;
-            flex-shrink: 0;
-        }
-
-        .card-pile {
-            position: relative;
-        }
-
-        .pile-card {
-            width: 50px;
-            height: 72px;
-            background: white;
-            border: 2px solid #333;
-            border-radius: 6px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            touch-action: manipulation;
-            font-size: 11px;
-        }
-
-        .pile-card:active {
-            transform: scale(0.95);
-        }
-
-        .pile-card.drop-target {
-            border: 3px dashed #ffd700;
-            background: rgba(255,215,0,0.2);
-        }
-
-        .draw-pile {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            font-size: 24px;
-        }
-
-        .pile-label {
-            text-align: center;
-            color: white;
-            font-weight: bold;
-            margin-top: 4px;
-            font-size: 0.65em;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-        }
-
-        .deck-count {
-            font-size: 10px;
-            margin-top: 2px;
-        }
-
-        .cut-joker-container {
-            position: absolute;
-            bottom: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        .cut-joker-card {
-            width: 30px;
-            height: 42px;
-            background: white;
-            border: 2px solid #ffd700;
-            border-radius: 4px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 6px rgba(255,215,0,0.6);
-            transform: rotate(90deg);
-            font-size: 0.6em;
-        }
-
-        .player-hand {
-            background: rgba(0,0,0,0.3);
-            padding: 4px;
-            border-radius: 8px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .hand-title {
-            color: white;
-            font-size: 0.8em;
-            margin-bottom: 2px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-
-        .turn-indicator {
-            font-size: 0.75em;
-            font-weight: bold;
-            color: #ffd700;
-            text-align: center;
-            padding: 3px;
-            background: rgba(0,0,0,0.5);
-            border-radius: 5px;
-            margin-bottom: 3px;
-            flex-shrink: 0;
-        }
-
-        .group-controls {
-            display: flex;
-            gap: 3px;
-            margin-bottom: 3px;
-            justify-content: center;
-            flex-shrink: 0;
-            flex-wrap: wrap;
-        }
-
-        .group-controls button {
-            padding: 4px 8px;
-            font-size: 0.65em;
-        }
-
-        .cards-area {
-            flex: 1;
-            overflow-y: auto;
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
-            padding: 3px;
-            min-height: 70px;
-            max-height: calc(100% - 10px);
-        }
-
-        .hand-cards {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2px;
-            padding: 4px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 6px;
-            min-height: 70px;
-            align-items: flex-start;
-        }
-
-        .card-group-container {
-            display: flex;
-            gap: 2px;
-            padding: 3px 8px;
-            background: rgba(255, 215, 0, 0.2);
-            border: 2px solid rgba(255, 215, 0, 0.7);
-            border-radius: 6px;
-            margin-right: 6px;
-            margin-bottom: 3px;
-            position: relative;
-        }
-
-        .card-group-container::before {
-            content: attr(data-group-number);
-            position: absolute;
-            top: -8px;
-            left: 5px;
-            background: #ffd700;
-            color: #333;
-            font-size: 0.65em;
-            font-weight: bold;
-            padding: 1px 6px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .card {
-            width: 45px;
-            height: 65px;
-            background: white;
-            border: 2px solid #333;
-            border-radius: 5px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            user-select: none;
-            touch-action: manipulation;
-            position: relative;
-            flex-shrink: 0;
-        }
-
-        .card:active {
-            transform: scale(0.95);
-        }
-
-        .card.selected {
-            border: 3px solid #ffd700;
-            box-shadow: 0 0 12px rgba(255,215,0,0.8);
-            transform: translateY(-3px);
-        }
-
-        .card.newly-drawn {
-            border: 3px solid #00ff00 !important;
-            animation: newCardPulse 2s ease-in-out;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.8) !important;
-        }
-
-        @keyframes newCardPulse {
-            0%, 100% { 
-                box-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
-                transform: scale(1);
-            }
-            50% { 
-                box-shadow: 0 0 30px rgba(0, 255, 0, 1);
-                transform: scale(1.08);
-            }
-        }
-
-        .card.dragging {
-            opacity: 0.4;
-            transform: scale(1.1);
-            box-shadow: 0 4px 12px rgba(255, 215, 0, 0.6);
-        }
-
-        .card.red {
-            color: #dc3545;
-        }
-
-        .card.black {
-            color: #000;
-        }
-
-        .card.joker {
-            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
-            border-color: #ff6b6b;
-        }
-
-        .card-value {
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .card-suit {
-            font-size: 16px;
-        }
-
-        .actions-bar {
-            display: flex;
-            gap: 3px;
-            justify-content: center;
-            margin-top: 3px;
-            flex-wrap: wrap;
-            flex-shrink: 0;
-        }
-
-        .actions-bar button {
-            padding: 5px 10px;
-            font-size: 0.7em;
-            flex: 0 0 auto;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            max-width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        .score-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-            font-size: 0.9em;
-        }
-
-        .score-table th,
-        .score-table td {
-            padding: 8px;
-            border: 1px solid #ddd;
-            text-align: center;
-        }
-
-        .score-table th {
-            background: #1e3c72;
-            color: white;
-        }
-
-        .message {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #333;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            z-index: 2000;
-            font-weight: 500;
-            animation: slideDown 0.3s ease;
-        }
-
-        .message.error {
-            background: #dc3545;
-        }
-
-        .message.success {
-            background: #28a745;
-        }
-
-        .message.info {
-            background: #17a2b8;
-        }
-
-        @keyframes slideDown {
-            from {
-                transform: translateX(-50%) translateY(-100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(-50%) translateY(0);
-                opacity: 1;
-            }
-        }
-
-        @media screen and (max-width: 768px) {
-            .card {
-                width: 42px;
-                height: 60px;
-            }
-            .pile-card {
-                width: 50px;
-                height: 70px;
-            }
-        }
-
-        @media screen and (orientation: landscape) {
-            .game-table {
-                padding: 6px;
-            }
-            .players-container {
-                height: 60px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <!-- Lobby Screen -->
-        <div id="lobbyScreen" class="screen active">
-            <div class="lobby-container">
-                <h1>🎴 Rummy Game</h1>
-                
-                <input type="text" id="playerName" placeholder="Enter your name" maxlength="15">
-                
-                <button class="btn-primary" onclick="createRoom()" style="width: 100%;">
-                    Create Room
-                </button>
-                
-                <button class="btn-success" onclick="showJoinRoom()" style="width: 100%; margin-top: 10px;">
-                    Join Room
-                </button>
-                
-                <div id="joinRoomDiv" style="display: none; margin-top: 15px;">
-                    <input type="text" id="roomCode" placeholder="Enter room code" maxlength="6" style="text-transform: uppercase;">
-                    <button class="btn-success" onclick="joinRoom()" style="width: 100%;">
-                        Join
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Waiting Screen -->
-        <div id="waitingScreen" class="screen">
-            <div class="lobby-container">
-                <h2>Room: <span id="displayRoomCode"></span></h2>
-                <p style="text-align: center; color: #666;">Share this code with friends!</p>
-                
-                <div id="playersList" style="margin: 20px 0;"></div>
-                
-                <button id="startGameBtn" class="btn-success" onclick="startGame()" style="width: 100%; display: none;">
-                    Start Game
-                </button>
-                
-                <button class="btn-danger" onclick="leaveRoom()" style="width: 100%;">
-                    Leave Room
-                </button>
-            </div>
-        </div>
-
-        <!-- Game Screen -->
-        <div id="gameScreen" class="screen">
-            <div class="game-container">
-                <div class="game-header">
-                    <h2>Room: <span id="gameRoomCode"></span></h2>
-                    <div id="timerContainer" style="display: none;">
-                        <div id="timerDisplay" class="timer-display">45</div>
-                    </div>
-                    <div class="score-icon" onclick="showScoreModal()">📊</div>
-                </div>
-
-                <div class="game-table">
-                    <div class="players-container" id="playersContainer"></div>
-
-                    <div class="center-area">
-                        <div class="card-pile">
-                            <div class="pile-card draw-pile" onclick="drawCard('deck')">
-                                🎴
-                                <div class="deck-count"><span id="deckCount">0</span> left</div>
-                            </div>
-                            <div class="cut-joker-container">
-                                <div class="cut-joker-card">
-                                    <div id="cutJokerValue" style="font-weight: bold;"></div>
-                                    <div id="cutJokerSuit"></div>
-                                </div>
-                            </div>
-                            <div class="pile-label">Draw Pile</div>
-                        </div>
-
-                        <div class="card-pile">
-                            <div id="discardCard" class="pile-card" onclick="drawCard('discard')"></div>
-                            <div class="pile-label">Discard Pile</div>
-                        </div>
-                    </div>
-
-                    <div class="player-hand">
-                        <div class="hand-title">Your Cards (<span id="cardCount">13</span>)</div>
-                        
-                        <div id="turnIndicator" class="turn-indicator">Waiting...</div>
-
-                        <div class="group-controls">
-                            <button class="btn-success" id="groupBtn" onclick="createGroup()" disabled>
-                                ✨ Group Selected
-                            </button>
-                            <button class="btn-warning" id="ungroupBtn" onclick="ungroupSelected()" disabled>
-                                ↩️ Ungroup
-                            </button>
-                            <button class="btn-primary" onclick="sortCards()">
-                                🔄 Sort
-                            </button>
-                        </div>
-
-                        <div class="cards-area">
-                            <div id="handCards" class="hand-cards"></div>
-                        </div>
-
-                        <div class="actions-bar">
-                            <button class="btn-danger" id="dropBtn" onclick="showDropOptions()">
-                                ⬇️ Drop
-                            </button>
-                            <button class="btn-warning" id="discardBtn" onclick="discardSelected()" disabled>
-                                🗑️ Discard
-                            </button>
-                            <button class="btn-success" id="showBtn" onclick="declareWin()" disabled>
-                                ✅ Show
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Score Modal -->
-    <div id="scoreModal" class="modal">
-        <div class="modal-content">
-            <h2>📊 Scores</h2>
-            <table class="score-table">
-                <thead>
-                    <tr>
-                        <th>Player</th>
-                        <th>Score</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="scoreTableBody"></tbody>
-            </table>
-            <div style="text-align: center; margin-top: 15px;">
-                <button class="btn-primary" onclick="closeScoreModal()">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-        let currentRoom = null;
-        let myPlayerId = null;
-        let gameState = null;
-        let selectedCards = []; // Array of card IDs (suit+value)
-        let cardGroups = []; // Array of arrays of card IDs
-        let draggedCardId = null;
-        let timerInterval = null;
-        let timeRemaining = 45;
-        let newlyDrawnCardId = null;
-        let cardOrderMap = new Map(); // Map card IDs to their display order
-
-        // Helper function to get unique card ID
-        function getCardId(card) {
-            return `${card.suit}_${card.value}_${Math.random().toString(36).substr(2, 9)}`;
-        }
-
-        // Preserve card order when receiving new gameState
-        function preserveCardOrder(newHand, oldHand) {
-            if (!oldHand || oldHand.length === 0) {
-                // First time, just use the order from server
-                newHand.forEach((card, index) => {
-                    if (card.id) {
-                        cardOrderMap.set(card.id, index);
-                    }
-                });
-                return newHand;
-            }
-
-            // Create a map of existing card IDs
-            const oldCardIds = new Set(oldHand.map(c => c.id));
-            const newCardIds = new Set(newHand.map(c => c.id));
-
-            // Find new cards (drawn)
-            const newCards = newHand.filter(c => !oldCardIds.has(c.id));
-            
-            // Find removed cards (discarded)
-            const removedCardIds = new Set([...oldCardIds].filter(id => !newCardIds.has(id)));
-
-            // Rebuild order map
-            const newOrderMap = new Map();
-            let orderIndex = 0;
-
-            // First, add existing cards in their original order
-            oldHand.forEach(oldCard => {
-                if (!removedCardIds.has(oldCard.id)) {
-                    const newCard = newHand.find(c => c.id === oldCard.id);
-                    if (newCard) {
-                        newOrderMap.set(newCard.id, orderIndex++);
-                    }
-                }
-            });
-
-            // Then add new cards at the end
-            newCards.forEach(card => {
-                newOrderMap.set(card.id, orderIndex++);
-            });
-
-            cardOrderMap = newOrderMap;
-
-            // Sort newHand according to the order map
-            return [...newHand].sort((a, b) => {
-                const orderA = cardOrderMap.get(a.id) ?? 999;
-                const orderB = cardOrderMap.get(b.id) ?? 999;
-                return orderA - orderB;
-            });
-        }
-
-        // Helper function to find card index by ID
-        function findCardIndexById(cardId) {
-            if (!gameState || !gameState.hand) return -1;
-            return gameState.hand.findIndex(card => card.id === cardId);
-        }
-
-        function showMessage(text, type = 'info') {
-            const msg = document.createElement('div');
-            msg.className = `message ${type}`;
-            msg.textContent = text;
-            document.body.appendChild(msg);
-            setTimeout(() => msg.remove(), 3000);
-        }
-
-        function showScreen(screenId) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(screenId).classList.add('active');
-        }
-
-        function createRoom() {
-            const name = document.getElementById('playerName').value.trim();
-            if (!name) {
-                showMessage('Please enter your name', 'error');
-                return;
-            }
-            socket.emit('createRoom', { playerName: name });
-        }
-
-        function showJoinRoom() {
-            document.getElementById('joinRoomDiv').style.display = 'block';
-        }
-
-        function joinRoom() {
-            const name = document.getElementById('playerName').value.trim();
-            const code = document.getElementById('roomCode').value.trim().toUpperCase();
-            if (!name || !code) {
-                showMessage('Enter name and code', 'error');
-                return;
-            }
-            socket.emit('joinRoom', { roomCode: code, playerName: name });
-        }
-
-        function startGame() {
-            socket.emit('startGame', { roomCode: currentRoom });
-        }
-
-        function leaveRoom() {
-            socket.emit('leaveRoom', { roomCode: currentRoom });
-            currentRoom = null;
-            showScreen('lobbyScreen');
-        }
-
-        function drawCard(source) {
-            if (!gameState || gameState.currentTurn !== myPlayerId) {
-                showMessage('Not your turn!', 'error');
-                return;
-            }
-            
-            if (gameState.hasDrawn) {
-                showMessage('Already drew a card!', 'error');
-                return;
-            }
-            
-            socket.emit('drawCard', { roomCode: currentRoom, source });
-        }
-
-        function selectCard(cardId) {
-            const index = selectedCards.indexOf(cardId);
-            if (index > -1) {
-                selectedCards.splice(index, 1);
-            } else {
-                selectedCards.push(cardId);
-            }
-            renderHand();
-            updateButtons();
-        }
-
-        function createGroup() {
-            if (selectedCards.length < 2) {
-                showMessage('Select at least 2 cards to group', 'error');
-                return;
-            }
-
-            const alreadyGrouped = selectedCards.some(cardId => {
-                return cardGroups.some(group => group.includes(cardId));
-            });
-
-            if (alreadyGrouped) {
-                showMessage('Some cards are already grouped! Ungroup them first.', 'error');
-                return;
-            }
-
-            cardGroups.push([...selectedCards]);
-            selectedCards = [];
-            
-            renderHand();
-            updateButtons();
-            showMessage(`Group created with ${cardGroups[cardGroups.length - 1].length} cards!`, 'success');
-        }
-
-        function ungroupSelected() {
-            if (selectedCards.length === 0) {
-                showMessage('Select cards to ungroup', 'error');
-                return;
-            }
-
-            let removedCount = 0;
-            
-            cardGroups = cardGroups.map(group => {
-                const filtered = group.filter(cardId => !selectedCards.includes(cardId));
-                if (filtered.length !== group.length) {
-                    removedCount++;
-                }
-                return filtered;
-            }).filter(group => group.length > 0);
-
-            selectedCards = [];
-            
-            renderHand();
-            updateButtons();
-            showMessage(`${removedCount} card(s) ungrouped`, 'success');
-        }
-
-        function discardSelected() {
-            if (selectedCards.length !== 1) {
-                showMessage('Select exactly 1 card to discard', 'error');
-                return;
-            }
-
-            if (!gameState.hasDrawn) {
-                showMessage('Draw a card first!', 'error');
-                return;
-            }
-
-            const cardId = selectedCards[0];
-            const cardIndex = findCardIndexById(cardId);
-            
-            if (cardIndex === -1) {
-                showMessage('Card not found!', 'error');
-                return;
-            }
-
-            socket.emit('discardCard', { roomCode: currentRoom, cardIndex });
-            selectedCards = [];
-        }
-
-        function sortCards() {
-            if (!gameState || !gameState.hand) return;
-
-            // Clear all groups when sorting
-            cardGroups = [];
-            selectedCards = [];
-
-            const suitOrder = { '♠': 0, '♣': 1, '♥': 2, '♦': 3, '🃏': 4 };
-            const rankOrder = { 
-                'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, 
-                '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'JOKER': 14 
-            };
-
-            gameState.hand.sort((a, b) => {
-                const suitA = suitOrder[a.suit] ?? 99;
-                const suitB = suitOrder[b.suit] ?? 99;
-                
-                if (suitA !== suitB) {
-                    return suitA - suitB;
-                }
-                
-                const rankA = rankOrder[a.value] ?? 0;
-                const rankB = rankOrder[b.value] ?? 0;
-                
-                return rankA - rankB;
-            });
-
-            // Update card order map after sorting
-            gameState.hand.forEach((card, index) => {
-                cardOrderMap.set(card.id, index);
-            });
-
-            renderHand();
-            updateButtons();
-            showMessage('Cards sorted by suit and rank', 'success');
-        }
-
-        function declareWin() {
-            if (!gameState.hasDrawn) {
-                showMessage('Draw a card first!', 'error');
-                return;
-            }
-
-            if (cardGroups.length === 0) {
-                if (!confirm('You have no groups! Are you sure you want to show? (This will likely be a wrong show)')) {
-                    return;
-                }
-            }
-
-            const groupedIds = new Set();
-            cardGroups.forEach(group => {
-                group.forEach(cardId => groupedIds.add(cardId));
-            });
-
-            const ungroupedCount = gameState.hand.length - groupedIds.size;
-
-            if (ungroupedCount > 1) {
-                showMessage(`You have ${ungroupedCount} ungrouped cards! Only 1 ungrouped card allowed.`, 'error');
-                return;
-            }
-
-            if (cardGroups.length < 2) {
-                if (!confirm(`You only have ${cardGroups.length} group(s). You need at least 2 sequences. Continue anyway?`)) {
-                    return;
-                }
-            }
-
-            if (confirm('Declare win? Wrong show = 80 pts penalty + ELIMINATION!')) {
-                const groups = cardGroups.map(group => 
-                    group.map(cardId => gameState.hand.find(card => card.id === cardId)).filter(card => card)
-                );
-                
-                const ungrouped = gameState.hand.filter(card => !groupedIds.has(card.id));
-                
-                socket.emit('declareWin', { 
-                    roomCode: currentRoom,
-                    groups: groups,
-                    ungrouped: ungrouped
-                });
-            }
-        }
-
-        function showDropOptions() {
-            if (gameState.hasDrawn) {
-                showMessage('Cannot drop after drawing card!', 'error');
-                return;
-            }
-
-            if (confirm('Drop out of this round? (Points determined by server)')) {
-                socket.emit('playerDrop', { 
-                    roomCode: currentRoom
-                });
-            }
-        }
-
-        function showScoreModal() {
-            if (!gameState) return;
-            
-            const tbody = document.getElementById('scoreTableBody');
-            tbody.innerHTML = '';
-            
-            gameState.players.forEach(player => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${player.name}${player.id === myPlayerId ? ' (You)' : ''}</td>
-                    <td>${player.totalScore || 0}</td>
-                    <td>${player.dropped ? '❌' : player.eliminated ? '⚠️' : '✅'}</td>
-                `;
-                tbody.appendChild(row);
-            });
-            
-            document.getElementById('scoreModal').classList.add('active');
-        }
-
-        function closeScoreModal() {
-            document.getElementById('scoreModal').classList.remove('active');
-        }
-
-        function updateButtons() {
-            if (!gameState) return;
-
-            const myPlayer = gameState.players.find(p => p.id === myPlayerId);
-            const isMyTurn = gameState && gameState.currentTurn === myPlayerId;
-            const hasDrawn = gameState && gameState.hasDrawn;
-            
-            if (myPlayer && (myPlayer.dropped || myPlayer.eliminated)) {
-                document.getElementById('groupBtn').disabled = true;
-                document.getElementById('ungroupBtn').disabled = true;
-                document.getElementById('discardBtn').disabled = true;
-                document.getElementById('dropBtn').disabled = true;
-                document.getElementById('showBtn').disabled = true;
-                return;
-            }
-            
-            const canGroup = selectedCards.length >= 2;
-            document.getElementById('groupBtn').disabled = !canGroup;
-            
-            const hasGroupedSelected = selectedCards.some(cardId => {
-                return cardGroups.some(group => group.includes(cardId));
-            });
-            document.getElementById('ungroupBtn').disabled = !hasGroupedSelected;
-            
-            const canDiscard = selectedCards.length === 1 && hasDrawn && isMyTurn;
-            document.getElementById('discardBtn').disabled = !canDiscard;
-            
-            const canDrop = !hasDrawn && isMyTurn;
-            document.getElementById('dropBtn').disabled = !canDrop;
-            
-            const canShow = hasDrawn && isMyTurn;
-            document.getElementById('showBtn').disabled = !canShow;
-        }
-
-        function startTimer(duration) {
-            if (timerInterval) {
-                clearInterval(timerInterval);
-            }
-
-            timeRemaining = duration;
-            document.getElementById('timerContainer').style.display = 'block';
-            const timerDisplay = document.getElementById('timerDisplay');
-            
-            timerInterval = setInterval(() => {
-                timeRemaining--;
-                timerDisplay.textContent = timeRemaining;
-                
-                if (timeRemaining <= 10) {
-                    timerDisplay.classList.add('warning');
-                } else {
-                    timerDisplay.classList.remove('warning');
-                }
-                
-                if (timeRemaining <= 0) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
-                }
-            }, 1000);
-        }
-
-        function stopTimer() {
-            if (timerInterval) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-            }
-            document.getElementById('timerContainer').style.display = 'none';
-        }
-
-        function renderHand() {
-            if (!gameState || !gameState.hand) return;
-
-            const container = document.getElementById('handCards');
-            container.innerHTML = '';
-
-            const myPlayer = gameState.players.find(p => p.id === myPlayerId);
-            
-            if (myPlayer && myPlayer.dropped) {
-                const waitingMsg = document.createElement('div');
-                waitingMsg.style.cssText = 'text-align: center; padding: 20px; color: white; font-size: 1.2em;';
-                waitingMsg.innerHTML = `
-                    <div style="font-size: 2em; margin-bottom: 10px;">⏳</div>
-                    <div style="font-weight: bold; color: #ff9800;">DROPPED THIS ROUND</div>
-                    <div style="margin-top: 10px; font-size: 0.9em;">Waiting for next round...</div>
-                    <div style="margin-top: 5px; font-size: 0.8em; color: #ffd700;">Your Score: ${myPlayer.totalScore}</div>
-                `;
-                container.appendChild(waitingMsg);
-                document.getElementById('cardCount').textContent = 0;
-                updateGroupSummary(0, 0);
-                updateButtons();
-                return;
-            }
-
-            if (myPlayer && myPlayer.eliminated) {
-                const eliminatedMsg = document.createElement('div');
-                eliminatedMsg.style.cssText = 'text-align: center; padding: 20px; color: white; font-size: 1.2em;';
-                eliminatedMsg.innerHTML = `
-                    <div style="font-size: 2em; margin-bottom: 10px;">❌</div>
-                    <div style="font-weight: bold; color: #ff4444;">ELIMINATED</div>
-                    <div style="margin-top: 10px; font-size: 0.9em;">You reached 250+ points</div>
-                    <div style="margin-top: 5px; font-size: 0.8em; color: #ffd700;">Final Score: ${myPlayer.totalScore}</div>
-                `;
-                container.appendChild(eliminatedMsg);
-                document.getElementById('cardCount').textContent = 0;
-                updateGroupSummary(0, 0);
-                updateButtons();
-                return;
-            }
-
-            if (gameState.hand.length === 0) {
-                document.getElementById('cardCount').textContent = 0;
-                updateGroupSummary(0, 0);
-                updateButtons();
-                return;
-            }
-
-            // Clean up invalid groups
-            cardGroups = cardGroups.map(group => {
-                return group.filter(cardId => gameState.hand.some(card => card.id === cardId));
-            }).filter(group => group.length >= 2);
-
-            const renderedIds = new Set();
-
-            // Render groups first
-            cardGroups.forEach((group, groupIdx) => {
-                const groupContainer = document.createElement('div');
-                groupContainer.className = 'card-group-container';
-                groupContainer.setAttribute('data-group-number', `Group ${groupIdx + 1}`);
-                
-                group.forEach(cardId => {
-                    const card = gameState.hand.find(c => c.id === cardId);
-                    if (card && !renderedIds.has(cardId)) {
-                        const cardEl = createCardElement(card);
-                        groupContainer.appendChild(cardEl);
-                        renderedIds.add(cardId);
-                    }
-                });
-                
-                if (groupContainer.children.length > 0) {
-                    container.appendChild(groupContainer);
-                }
-            });
-
-            // Render ungrouped cards
-            let ungroupedCount = 0;
-            gameState.hand.forEach(card => {
-                if (!renderedIds.has(card.id)) {
-                    const cardEl = createCardElement(card);
-                    container.appendChild(cardEl);
-                    renderedIds.add(card.id);
-                    ungroupedCount++;
-                }
-            });
-
-            const cardCountEl = document.getElementById("cardCount");
-if (cardCountEl) {
-  cardCountEl.textContent = gameState.hand.length;
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rummy Multiplayer</title>
+
+<style>
+body {
+    margin:0;
+    font-family:Arial;
+    background:#1e3c72;
 }
-            updateGroupSummary(cardGroups.length, ungroupedCount);
-            updateButtons();
-        }
+.screen { display:none; padding:20px; }
+.active { display:block; }
 
-        function updateGroupSummary(groupCount, ungroupedCount) {
-            const handTitle = document.querySelector('.hand-title');
-            if (handTitle && gameState) {
-                const myPlayer = gameState.players.find(p => p.id === myPlayerId);
-                const timeoutInfo = myPlayer && myPlayer.totalTimeouts > 0 
-                    ? ` | <span style="color: #ffc107;">⏱️ ${myPlayer.totalTimeouts} timeout(s)</span>` 
-                    : '';
-                
-                handTitle.innerHTML = `Your Cards (${gameState?.hand?.length || 0}) | 
-                    <span style="color: #ffd700;">${groupCount} Groups</span> | 
-                    <span style="color: ${ungroupedCount > 1 ? '#ff6b6b' : '#4CAF50'};">${ungroupedCount} Ungrouped</span>${timeoutInfo}`;
-            }
-        }
+.card {
+    width:50px;
+    height:70px;
+    border:2px solid black;
+    border-radius:6px;
+    background:white;
+    display:inline-flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    margin:3px;
+    cursor:pointer;
+}
+.card.red { color:red; }
+.card.selected {
+    border:3px solid gold;
+    transform:translateY(-5px);
+}
+button { padding:8px 12px; margin:5px; }
+</style>
+</head>
 
-        function createCardElement(card) {
-            const cardDiv = document.createElement('div');
-            cardDiv.className = 'card';
-            cardDiv.setAttribute('data-card-id', card.id);
-            
-            if (card.suit === '♥' || card.suit === '♦') {
-                cardDiv.classList.add('red');
-            } else {
-                cardDiv.classList.add('black');
-            }
-            
-            if (card.value === 'JOKER') {
-                cardDiv.classList.add('joker');
-            }
-            
-            if (selectedCards.includes(card.id)) {
-                cardDiv.classList.add('selected');
-            }
-            
-            if (newlyDrawnCardId !== null && card.id === newlyDrawnCardId) {
-                cardDiv.classList.add('newly-drawn');
-                
-                setTimeout(() => {
-                    newlyDrawnCardId = null;
-                    renderHand();
-                }, 3000);
-            }
-            
-            cardDiv.innerHTML = `
-                <div class="card-value">${card.value}</div>
-                <div class="card-suit">${card.suit}</div>
-            `;
-            
-            cardDiv.addEventListener('click', (e) => {
-                e.stopPropagation();
-                selectCard(card.id);
-            });
+<body>
 
-            // Mobile drag
-            let longPressTimer;
-            let isDragging = false;
-            let startX, startY;
+<div id="lobby" class="screen active">
+    <h2>🎴 Rummy Game</h2>
+    <input id="name" placeholder="Your Name"><br>
+    <button onclick="createRoom()">Create Room</button>
+    <button onclick="joinRoom()">Join Room</button>
+    <input id="roomCode" placeholder="Room Code">
+</div>
 
-            cardDiv.addEventListener('touchstart', (e) => {
-                if (e.target.tagName === 'BUTTON') return;
-                
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-                isDragging = false;
+<div id="waiting" class="screen">
+    <h3>Room: <span id="roomDisplay"></span></h3>
+    <div id="players"></div>
+    <button onclick="startGame()">Start Game</button>
+</div>
 
-                longPressTimer = setTimeout(() => {
-                    if (gameState && gameState.hasDrawn && gameState.currentTurn === myPlayerId) {
-                        isDragging = true;
-                        draggedCardId = card.id;
-                        cardDiv.classList.add('dragging');
-                    }
-                }, 300);
-            });
+<div id="game" class="screen">
+    <h3>Room: <span id="gameRoom"></span></h3>
+    <div id="turnInfo"></div>
 
-            cardDiv.addEventListener('touchmove', (e) => {
-                const touch = e.touches[0];
-                const deltaX = Math.abs(touch.clientX - startX);
-                const deltaY = Math.abs(touch.clientY - startY);
+    <h4>Discard Pile</h4>
+    <div id="discardPile"></div>
 
-                if (!isDragging && (deltaX > 10 || deltaY > 10)) {
-                    clearTimeout(longPressTimer);
-                }
+    <h4>Your Cards (<span id="cardCount"></span>)</h4>
+    <div id="hand"></div>
 
-                if (isDragging) {
-                    e.preventDefault();
-                    
-                    const discardPile = document.getElementById('discardCard');
-                    const rect = discardPile.getBoundingClientRect();
-                    
-                    if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
-                        touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-                        discardPile.classList.add('drop-target');
-                    } else {
-                        discardPile.classList.remove('drop-target');
-                    }
-                }
-            });
+    <button onclick="drawCard('deck')">Draw Deck</button>
+    <button onclick="drawCard('discard')">Draw Discard</button>
+    <button onclick="discardSelected()">Discard</button>
+    <button onclick="declareShow()">Show</button>
+</div>
 
-            cardDiv.addEventListener('touchend', (e) => {
-                clearTimeout(longPressTimer);
-                
-                if (isDragging && draggedCardId !== null) {
-                    const touch = e.changedTouches[0];
-                    const discardPile = document.getElementById('discardCard');
-                    const rect = discardPile.getBoundingClientRect();
-                    
-                    if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
-                        touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-                        const cardIndex = findCardIndexById(draggedCardId);
-                        if (cardIndex !== -1) {
-                            socket.emit('discardCard', { roomCode: currentRoom, cardIndex });
-                        }
-                    }
-                    
-                    discardPile.classList.remove('drop-target');
-                    cardDiv.classList.remove('dragging');
-                    draggedCardId = null;
-                    isDragging = false;
-                } else if (!isDragging) {
-                    selectCard(card.id);
-                }
-            });
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
 
-            // Desktop drag
-            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-            cardDiv.draggable = !isTouchDevice;
-            
-            if (!isTouchDevice) {
-                cardDiv.addEventListener('dragstart', (e) => {
-                    if (!gameState || !gameState.hasDrawn || gameState.currentTurn !== myPlayerId) {
-                        e.preventDefault();
-                        return;
-                    }
-                    draggedCardId = card.id;
-                    cardDiv.classList.add('dragging');
-                    e.dataTransfer.effectAllowed = 'move';
-                });
+let currentRoom=null;
+let myId=null;
+let gameState=null;
+let selected=[];
 
-                cardDiv.addEventListener('dragend', () => {
-                    cardDiv.classList.remove('dragging');
-                });
-            }
+/* ---------- UI ---------- */
 
-            return cardDiv;
-        }
+function show(id){
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+}
 
-        function setupDropZones() {
-            const discardPile = document.getElementById('discardCard');
-            
-            discardPile.addEventListener('dragover', (e) => {
-                if (draggedCardId !== null && gameState && gameState.hasDrawn) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    discardPile.classList.add('drop-target');
-                }
-            });
+/* ---------- ROOM ---------- */
 
-            discardPile.addEventListener('dragleave', () => {
-                discardPile.classList.remove('drop-target');
-            });
+function createRoom(){
+    const name=document.getElementById("name").value;
+    socket.emit("createRoom",{playerName:name});
+}
 
-            discardPile.addEventListener('drop', (e) => {
-                e.preventDefault();
-                discardPile.classList.remove('drop-target');
-                
-                if (draggedCardId === null || !gameState.hasDrawn) return;
+function joinRoom(){
+    const name=document.getElementById("name").value;
+    const code=document.getElementById("roomCode").value;
+    socket.emit("joinRoom",{playerName:name,roomCode:code});
+}
 
-                const cardIndex = findCardIndexById(draggedCardId);
-                if (cardIndex !== -1) {
-                    socket.emit('discardCard', { roomCode: currentRoom, cardIndex });
-                }
-                draggedCardId = null;
-            });
-        }
+function startGame(){
+    socket.emit("startGame",{roomCode:currentRoom});
+}
 
-        function renderGameState() {
-            if (!gameState) return;
+/* ---------- GAME ---------- */
 
-            document.getElementById('deckCount').textContent = gameState.deckCount || 0;
+function drawCard(source){
+    socket.emit("drawCard",{roomCode:currentRoom,source});
+}
 
-            const discardTop = gameState.discardPile[gameState.discardPile.length - 1];
-            if (discardTop) {
-                const color = (discardTop.suit === '♥' || discardTop.suit === '♦') ? 'color: #dc3545;' : 'color: #000;';
-                document.getElementById('discardCard').innerHTML = `
-                    <div style="font-size: 11px; font-weight: bold; ${color}">${discardTop.value}</div>
-                    <div style="font-size: 14px; ${color}">${discardTop.suit}</div>
-                `;
-            }
+/* ---- FIXED DISCARD (BY CARD ID) ---- */
 
-            if (gameState.cutJoker) {
-                const color = (gameState.cutJoker.suit === '♥' || gameState.cutJoker.suit === '♦') ? 'color: #dc3545;' : 'color: #000;';
-                document.getElementById('cutJokerValue').textContent = gameState.cutJoker.value;
-                document.getElementById('cutJokerValue').style = color;
-                document.getElementById('cutJokerSuit').textContent = gameState.cutJoker.suit;
-                document.getElementById('cutJokerSuit').style = color;
-            }
+function discardSelected(){
+    if(selected.length!==1) return alert("Select 1 card");
 
-            const isMyTurn = gameState.currentTurn === myPlayerId;
-            const currentPlayer = gameState.players.find(p => p.id === gameState.currentTurn);
-            const myPlayer = gameState.players.find(p => p.id === myPlayerId);
-            
-            let turnText = '';
-            if (myPlayer && myPlayer.eliminated) {
-                turnText = '❌ ELIMINATED';
-            } else if (myPlayer && myPlayer.dropped) {
-                turnText = '⏳ WAITING FOR NEXT ROUND';
-            } else if (isMyTurn) {
-                turnText = '⏰ YOUR TURN';
-            } else {
-                turnText = `${currentPlayer?.name || 'Player'}...`;
-            }
-            
-            document.getElementById('turnIndicator').innerHTML = turnText;
+    socket.emit("discardCard",{
+        roomCode:currentRoom,
+        cardId:selected[0]
+    });
 
-            renderPlayers();
-            renderHand();
-            setupDropZones();
-        }
+    selected=[];
+}
 
-        function renderPlayers() {
-            const container = document.getElementById('playersContainer');
-            container.innerHTML = '';
+/* ---------- SHOW ---------- */
 
-            const positions = ['top', 'right', 'left'];
-            let posIndex = 0;
+function declareShow(){
 
-            gameState.players.forEach(player => {
-                if (player.id !== myPlayerId) {
-                    const playerDiv = document.createElement('div');
-                    playerDiv.className = `player-avatar ${positions[posIndex]}`;
-                    
-                    if (player.id === gameState.currentTurn && !player.dropped && !player.eliminated) {
-                        playerDiv.classList.add('current-turn');
-                    }
-                    
-                    if (player.dropped || player.eliminated) {
-                        playerDiv.classList.add('dropped');
-                    }
-                    
-                    let statusText = '';
-                    if (player.eliminated) {
-                        statusText = '<div style="color: #ff4444; font-size: 0.65em; font-weight: bold;">ELIMINATED</div>';
-                    } else if (player.dropped) {
-                        statusText = '<div style="color: #ff9800; font-size: 0.65em;">DROPPED</div>';
-                    }
-                    
-                    let timeoutText = '';
-                    if (player.totalTimeouts && player.totalTimeouts > 0) {
-                        timeoutText = `<div style="color: #ffc107; font-size: 0.6em;">⏱️ ${player.totalTimeouts} timeout(s)</div>`;
-                    }
-                    
-                    playerDiv.innerHTML = `
-                        <div class="player-name">${player.name}</div>
-                        <div style="font-size: 0.75em;">🎴 ${player.cardCount}</div>
-                        <div class="player-score">Score: ${player.totalScore || 0}</div>
-                        ${timeoutText}
-                        ${statusText}
-                    `;
-                    
-                    container.appendChild(playerDiv);
-                    posIndex++;
-                }
-            });
-        }
+    const groups = [];
+    const ungrouped = [];
 
-        // Socket Events
-        socket.on('roomCreated', (data) => {
-            currentRoom = data.roomCode;
-            myPlayerId = socket.id;
-            document.getElementById('displayRoomCode').textContent = data.roomCode;
-            document.getElementById('startGameBtn').style.display = 'block';
-            updatePlayersList(data.room.players);
-            showScreen('waitingScreen');
-            showMessage('Room: ' + data.roomCode, 'success');
-        });
+    gameState.hand.forEach(card=>{
+        if(selected.includes(card.id))
+            groups.push([card]);
+        else
+            ungrouped.push(card);
+    });
 
-        socket.on('roomJoined', (data) => {
-            currentRoom = data.roomCode;
-            myPlayerId = socket.id;
-            document.getElementById('displayRoomCode').textContent = data.roomCode;
-            updatePlayersList(data.room.players);
-            showScreen('waitingScreen');
-            showMessage('Joined!', 'success');
-        });
+    socket.emit("declareWin",{
+        roomCode:currentRoom,
+        groups,
+        ungrouped
+    });
+}
 
-        socket.on('roomUpdate', (room) => {
-            updatePlayersList(room.players);
-        });
+/* ---------- RENDER ---------- */
 
-        socket.on('seatingArranged', (data) => {
-            const message = `🎴 SEATING ARRANGEMENT 🎴\n\n` +
-                data.players.map((p, idx) => 
-                    `${idx + 1}. ${p.name} - ${p.pickedCard.value}${p.pickedCard.suit} (Rank: ${p.rank})${p.isDealer ? ' 🎯 DEALER' : ''}`
-                ).join('\n') +
-                `\n\n${data.dealer} is dealer\n${data.firstPlayer} gets first turn!`;
-            
-            alert(message);
-        });
+function render(){
+    if(!gameState) return;
 
-        socket.on('gameStarted', (state) => {
-            // Initialize card order for new game
-            if (state.hand) {
-                state.hand.forEach((card, index) => {
-                    if (card.id) {
-                        cardOrderMap.set(card.id, index);
-                    }
-                });
-            }
-            
-            gameState = state;
-            cardGroups = [];
-            selectedCards = [];
-            newlyDrawnCardId = null;
-            document.getElementById('gameRoomCode').textContent = currentRoom;
-            showScreen('gameScreen');
-            renderGameState();
-            showMessage('Game started!', 'success');
-        });
+    document.getElementById("turnInfo").innerText =
+        gameState.currentTurn===myId ? "YOUR TURN" : "Waiting...";
 
-        socket.on('gameState', (state) => {
-            const oldHandSize = gameState && gameState.hand ? gameState.hand.length : 0;
-            const oldHand = gameState ? gameState.hand : null;
-            
-            // Preserve card order before updating gameState
-            if (state.hand && state.hand.length > 0) {
-                state.hand = preserveCardOrder(state.hand, oldHand);
-            }
-            
-            gameState = state;
-            
-            // Detect newly drawn card
-            if (state.hand && state.hand.length > oldHandSize) {
-                const newCard = state.hand[state.hand.length - 1];
-                newlyDrawnCardId = newCard.id;
-                showMessage('Card drawn! (Highlighted in green)', 'success');
-            }
-            
-            renderGameState();
-        });
+    document.getElementById("cardCount").innerText =
+        gameState.hand.length;
 
-        socket.on('timerStarted', (data) => {
-            if (data.playerId === myPlayerId) {
-                startTimer(data.duration);
-            }
-        });
+    /* Render Hand */
+    const handDiv=document.getElementById("hand");
+    handDiv.innerHTML="";
+    gameState.hand.forEach(card=>{
+        const div=document.createElement("div");
+        div.className="card";
+        if(card.suit==="♥"||card.suit==="♦")
+            div.classList.add("red");
 
-        socket.on('timerStopped', (data) => {
-            if (data.playerId === myPlayerId) {
-                stopTimer();
-            }
-        });
+        if(selected.includes(card.id))
+            div.classList.add("selected");
 
-        socket.on('roundWon', (data) => {
-            showMessage(`${data.winner} won the round! ${data.reason}`, 'success');
-            stopTimer();
-            setTimeout(() => {
-                showMessage('New round starting...', 'info');
-            }, 2000);
-        });
+        div.innerHTML=`<div>${card.value}</div><div>${card.suit}</div>`;
 
-        socket.on('newRoundStarted', (data) => {
-            cardGroups = [];
-            selectedCards = [];
-            newlyDrawnCardId = null;
-            
-            const message = data.dealer 
-                ? `New round! Dealer: ${data.dealer}, First turn: ${data.firstPlayer}`
-                : 'New round! Cards dealt!';
-            
-            showMessage(message, 'success');
-        });
+        div.onclick=()=>{
+            if(selected.includes(card.id))
+                selected=selected.filter(id=>id!==card.id);
+            else
+                selected.push(card.id);
+            render();
+        };
 
-        socket.on('gameWon', (data) => {
-            stopTimer();
-            alert(data.reason ? `🎉 ${data.winner} WINS THE GAME!\n${data.reason}` : `🎉 ${data.winner} WINS THE GAME!`);
-        });
+        handDiv.appendChild(div);
+    });
 
-        socket.on('playerEliminated', (data) => {
-            showMessage(`${data.playerName} eliminated! ${data.reason || ''}`, 'error');
-        });
+    /* Discard */
+    const discardDiv=document.getElementById("discardPile");
+    discardDiv.innerHTML="";
+    const top=gameState.discardPile.slice(-1)[0];
+    if(top){
+        discardDiv.innerHTML=`${top.value} ${top.suit}`;
+    }
+}
 
-        socket.on('wrongShow', (data) => {
-            showMessage(`${data.player}: Wrong Show! 80 pts`, 'error');
-        });
+/* ---------- SOCKET ---------- */
 
-        socket.on('playerDropped', (data) => {
-            showMessage(`${data.playerName} dropped (${data.points} pts)`, 'info');
-        });
+socket.on("roomCreated",data=>{
+    currentRoom=data.roomCode;
+    myId=socket.id;
+    document.getElementById("roomDisplay").innerText=currentRoom;
+    show("waiting");
+});
 
-        socket.on('playerAutoDropped', (data) => {
-            showMessage(`${data.playerName} auto-dropped (timeout)!`, 'error');
-        });
+socket.on("roomJoined",data=>{
+    currentRoom=data.roomCode;
+    myId=socket.id;
+    document.getElementById("roomDisplay").innerText=currentRoom;
+    show("waiting");
+});
 
-        socket.on('autoPlayExecuted', (data) => {
-            showMessage(`${data.playerName} timeout! Auto-played.`, 'info');
-        });
+socket.on("roomUpdate",room=>{
+    const div=document.getElementById("players");
+    div.innerHTML="";
+    room.players.forEach(p=>{
+        div.innerHTML+=`<div>${p.name}</div>`;
+    });
+});
 
-        socket.on('error', (msg) => {
-            showMessage(msg, 'error');
-        });
+socket.on("gameStarted",state=>{
+    gameState=state;
+    document.getElementById("gameRoom").innerText=currentRoom;
+    show("game");
+    render();
+});
 
-        function updatePlayersList(players) {
-            const list = document.getElementById('playersList');
-            list.innerHTML = '';
-            
-            players.forEach(player => {
-                const div = document.createElement('div');
-                div.style.padding = '8px';
-                div.style.margin = '5px 0';
-                div.style.background = 'white';
-                div.style.borderRadius = '5px';
-                div.innerHTML = `
-                    ${player.name}
-                    ${player.id === socket.id ? ' 👤' : ''}
-                    ${player.id === players[0].id ? ' 👑' : ''}
-                `;
-                list.appendChild(div);
-            });
-        }
-    </script>
+socket.on("gameState",state=>{
+    gameState=state;
+    render();
+});
+
+socket.on("roundWon",data=>{
+    alert(data.winner+" WON! "+data.reason);
+});
+
+socket.on("wrongShow",data=>{
+    alert("Wrong Show: "+data.reason);
+});
+
+socket.on("error",msg=>{
+    alert(msg);
+});
+</script>
+
 </body>
 </html>
